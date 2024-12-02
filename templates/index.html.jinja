@@ -1,0 +1,72 @@
+{% extends "base.html.jinja" %}
+
+{% block title %}шторм 11/24{% endblock title %}
+
+{% block header %}{{ super() }}{% endblock %}
+
+{% block navigation %}{{ super() }}{% endblock navigation %}
+
+{% block content %}
+{{ super() }}
+
+<div class="row">
+
+  <div class="col s8">
+    <div class="">
+      <canvas id="myChart"></canvas>
+    </div>
+  </div>
+
+  <div class="col s4">
+    
+
+    <div>
+      <ul class="collection">
+        <li class="collection-item">Alvin</li>
+        <li class="collection-item">Alvin</li>
+        <li class="collection-item">Alvin</li>
+        <li class="collection-item">Alvin</li>
+      </ul>
+    </div>
+
+  </div>
+
+</div>
+
+<div class="row">
+
+  <div class="col s8">
+    <div class="row">
+      <form class="col s12">
+        <div class="row">
+          <div class="input-field col s6">
+            <i class="material-icons prefix">account_circle</i>
+            <input id="icon_prefix" type="text" class="validate">
+            <label for="icon_prefix">First Name</label>
+          </div>
+          <div class="input-field col s6">
+            <i class="material-icons prefix">phone</i>
+            <input id="icon_telephone" type="tel" class="validate">
+            <label for="icon_telephone">Telephone</label>
+          </div>
+        </div>
+      </form>
+    </div>
+  </div>
+  <div class="col s4">
+    <button class="btn waves-effect waves-light" type="submit" name="action">Submit
+      <i class="material-icons right">send</i>
+    </button>
+  </div>
+</div>
+{% endblock content %}
+
+{% block scripts %}
+{{ super() }}
+
+<script type="text/javascript"
+  src="https://raw.githubusercontent.com/chartjs/Chart.js/refs/heads/master/docs/scripts/utils.js"></script>
+<script type="text/javascript" src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<script src="{{ url_for('static', filename='js/chart_scripts.js') }}"></script>
+{% endblock scripts %}

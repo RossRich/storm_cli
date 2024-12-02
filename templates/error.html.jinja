@@ -1,0 +1,21 @@
+{% extends "base.html.jinja" %}
+
+{% block title %}Нет портов для подключения{% endblock title %}
+
+{% block header %}
+{{ super() }}
+{% endblock header %}
+
+{% block navigation %}{% endblock navigation %}
+
+{% block content %}
+{{ super() }}
+<div class="valign-wrapper">
+  <div class="section center-align ">
+    <i class="material-icons large ">sync_problem</i>
+    <h4>Порт для подключения не найден</h4>
+  </div>
+</div>
+
+
+{% endblock content %}
