@@ -10,21 +10,20 @@ from flask_socketio import Namespace, SocketIO, emit
 import serial.tools
 import serial.tools.list_ports
 
+from static_data import Templates
 
-class Templates():
-  index = "index.html.jinja"
-  no_serial = "error.html.jinja"
-
-
-class SerialWorker():
+class SerialWorker(Namespace):
 
   class STATES(IntEnum):
     WAIT = auto()
     CONNECTING = auto()
     READ = auto()
     CMD = auto()
+    CLOSE = auto()
 
-  def __init__(self, rate: int, socketio) -> None:
+  def __init__(self, rate: int) -> None:
+    super().__init__("/")
+    
     self._is_stop = Event()
     self._is_stop.clear()
     self._rate = 1.0 / rate
@@ -34,6 +33,19 @@ class SerialWorker():
     self.socketio = socketio
     self.serial_port = serial.Serial()
 
+  def on_connect(self):
+    print("on_connect")
+
+  def on_disconnect(self):
+    print("on_disconnect")
+
+  def on_my_event(self, data):
+    print(data)
+    emit('my_response', data)
+  
+  def on_uart(self, data):
+    print("uart data:", data)
+
   def trs(self, new_state) -> None:
     self._state = new_state
 
@@ -42,7 +54,7 @@ class SerialWorker():
     while not self._is_stop.is_set():
 
       if len(serial.tools.list_ports.comports()) == 0:
-        self.trs(STATES.WAIT)
+        self.trs(STATES.CLOSE)
 
       if self._state == STATES.WAIT:
         potrs = serial.tools.list_ports.comports()
@@ -51,8 +63,25 @@ class SerialWorker():
           socketio.emit("uart", {"event": "new_port", "data": ports_list})
           self.trs(STATES.CONNECTING)
       elif self._state == STATES.CONNECTING:
-        # self.serial_port.port
-        pass
+        self.serial_port.port = "/dev/ttyACM0"
+        self.serial_port.baudrate = 115200
+        try:
+          self.serial_port.open()
+          self.trs(STATES.READ)
+        except Exception as e:
+          print("Error: " + str(e))
+      elif self._state == STATES.READ:
+        data = self.serial_port.readline()
+        if len(data):
+          print(data.decode('utf-8'))
+      elif self._state == STATES.CLOSE:
+        try:
+          self.serial_port.close()
+          self.trs(STATES.WAIT)
+          print("Port close")
+        except:
+          pass
+
 
       time.sleep(self._rate)
 
@@ -61,17 +90,17 @@ class SerialWorker():
 
   def shutdown(self) -> None:
     self._is_stop.set()
+    self.serial_port.close()
     self.worker.join()
-
 
 def get_serial_ports() -> list:
   serial_ports = serial.tools.list_ports.comports()
   for i in serial_ports:
     print(i)
-  return serial_ports
+  return [port.name for port in serial_ports]
 
 
-class MyCustomNamespace(Namespace):
+class SocketWorkerNamespace(Namespace):
   def on_connect(self):
     print("on_connect")
 
@@ -95,15 +124,13 @@ def no_serial(error) -> str:
 
 @app.route("/")
 def home() -> str:
-  # if len() == 0:
-  # abort(500)
-
   return render_template(Templates.index, ports=get_serial_ports())
 
 
 if __name__ == "__main__":
-  socketio.on_namespace(MyCustomNamespace("/"))
-  sw = SerialWorker(1, socketio)
+  # main_ns = SocketWorkerNamespace("/")
+  sw = SerialWorker(1)
+  socketio.on_namespace(sw)
   sw.start()
   app.run(debug=True)
   sw.shutdown()

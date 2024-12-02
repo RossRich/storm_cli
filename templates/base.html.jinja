@@ -20,17 +20,20 @@
 </head>
 
 <body>
-
   {% block navigation %}
+
   <ul id="cmn_ports" class="dropdown-content">
-    <li><a href="#!">one</a></li>
-    <li><a href="#!">two</a></li>
-    <li><a href="#!">three</a></li>
+    {% if ports|length > 0 %}
+      {% for port in ports %}
+        <li><a href="#!">{{port|e}}</a></li>
+      {% endfor %}
+    {% endif %}
   </ul>
 
   <nav class="light-blue lighten-1" role="navigation">
     <div class="nav-wrapper container">
-      <a id="logo-container" href="#" class="brand-logo"><i class="material-icons">beach_access</i>шторм 11/24</a>
+      <a id="logo-container" href="#" class="brand-logo"><i class="material-icons medium">assessment</i>КИП ВМГ
+        11/24</a>
       <ul class="right hide-on-med-and-down">
         <li>
           {# <div class="input-field">
@@ -78,19 +81,21 @@
   <script type="text/javascript" charset="utf-8">
     var socket = io();
     socket.on('connect', function () {
-      socket.emit('my event', { data: 'I\'m connected!' });
+      socket.emit("uart", { "data": "OK" })
       M.toast({ html: 'Connected' })
+
     });
 
     socket.on("uart", (msg) => {
       M.toast({ html: msg.data })
-      if (msg.event == "new_port"){
-        console.log( msg.data)
-        for(let i = 0; i < msg.data.length; i++) {
+      if (msg.event == "new_port") {
+        console.log(msg.data)
+        for (let i = 0; i < msg.data.length; i++) {
           $("ul#cmn_ports").append($("<li/>", {
-            html: "<a href='#!'>"+msg.data[i]+"</a>"
+            html: "<a href='#!'>" + msg.data[i] + "</a>"
           }));
         }
+
       }
     })
   </script>
