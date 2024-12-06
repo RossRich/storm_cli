@@ -74,19 +74,21 @@
   <!--Init materialize-->
   <script type="text/javascript" charset="utf-8">
     M.AutoInit()
-    var elems = document.querySelectorAll('.dropdown-trigger.dropdown_ports');
-    var instances = M.Dropdown.init(elems, { "onCloseEnd": () => { console.log($(".dropdown-trigger.dropdown_ports")); } });
+    // var elems = document.querySelectorAll('.dropdown-trigger.dropdown_ports');
+    // var instances = M.Dropdown.init(elems, { "onCloseEnd": () => { console.log($(".dropdown-trigger.dropdown_ports")); } });
   </script>
 
   <script type="text/javascript" charset="utf-8">
     var socket = io();
     socket.on('connect', function () {
-      socket.emit("uart", { "data": "OK" })
       M.toast({ html: 'Connected' })
-
     });
 
-    socket.on("uart", (msg) => {
+    socket.on("serial_data", (msg) => {
+      console.log(msg)
+    });
+
+    socket.on("request", (msg) => {
       M.toast({ html: msg.data })
       if (msg.event == "new_port") {
         console.log(msg.data)
