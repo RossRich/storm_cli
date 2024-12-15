@@ -1,8 +1,10 @@
 #!/bin/python3
 
 from abc import ABC, abstractmethod
+from ctypes import Structure, c_bool, c_float, c_int
 from json import load
-from typing import Callable, Dict, List, Union
+import queue
+from typing import Any, Callable, Dict, List, Union
 from enum import IntEnum, auto, unique
 from threading import Event, Thread
 import time
@@ -13,7 +15,64 @@ from flask import render_template
 from flask_socketio import Namespace, SocketIO, emit
 import serial.tools
 import serial.tools.list_ports
+from serial.tools.list_ports_common import ListPortInfo
 from static_data import Templates
+
+DEBUG_ENABLED = True
+
+
+def debug_msg(msg):
+  global DEBUG_ENABLED
+  if DEBUG_ENABLED:
+    print(msg)
+
+
+class SerialMsg():
+  DATA_LEN = 25
+  START_COND = '$'
+  END_COND = '\n'
+
+  def __init__(self):
+    self.data = 'x' * SerialMsg.DATA_LEN
+    self.start_idx = -1
+    self.end_idx = -1
+    self.len = 0
+    self.data_list = []
+    self.d = {"state": 0, "weight": 0.0, "current": 0.0, "voltage": 0.0, "pwm": 0}
+
+  def __str__(self):
+    return self.data
+
+  def reset(self) -> None:
+    self.start_idx = -1
+    self.end_idx = -1
+
+  def is_data_exist(self) -> bool:
+    return self.start_idx != -1 and self.end_idx != -1 and self.end_idx > self.start_idx
+
+  def find_start(self) -> bool:
+    self.data = '$' + self.data.split('$')[-1]
+    self.start_idx = self.data.find(SerialMsg.START_COND)
+    return self.start_idx != -1
+
+  def find_end(self) -> bool:
+    if self.start_idx != -1:
+      self.end_idx = self.data.find(SerialMsg.END_COND, self.start_idx + 1)
+      return self.end_idx != -1
+
+    return False
+
+  def parse(self) -> int:
+    self.data_list = self.data[self.start_idx + 1:self.end_idx].split(';')
+    return len(self.data_list)
+
+  def to_dict(self) -> None:
+    if len(self.data_list) >= 5:
+      self.d["state"] = self.data_list[0]
+      self.d["weight"] = self.data_list[1]
+      self.d["current"] = self.data_list[2]
+      self.d["voltage"] = self.data_list[3]
+      self.d["pwm"] = self.data_list[4]
 
 
 @unique
@@ -48,16 +107,13 @@ class Model(Publisher):
     super().__init__()
     self.serial_data: Dict[str, float] = {}
     self.is_client_connected = False
-    self._load = 0.0
-    self._current = 0.0
+    self.is_port_opened = False
+    self.ports: List[ListPortInfo] = []
 
-  @property
-  def load(self) -> float:
-    return self._load
-
-  @property
-  def current(self) -> float:
-    return self._current
+  def set_port(self, port: Union[List, ListPortInfo]) -> None:
+    if isinstance(port, ListPortInfo):
+      if port not in self.ports:
+        self.ports
 
   def set_uart_data(self, data) -> None:
     self.serial_data = data
@@ -65,11 +121,11 @@ class Model(Publisher):
 
 
 class SerialWorker():
-
   class STATES(IntEnum):
     WAIT = auto()
     CONNECTING = auto()
     READ = auto()
+    PARSE = auto()
     CMD = auto()
     CLOSE = auto()
 
@@ -84,6 +140,8 @@ class SerialWorker():
     self.serial_port = serial.Serial()
     self.model = model
     self.port = "/dev/ttyACM0"
+    self.msg = SerialMsg()
+    self.ports = []
 
   def trs(self, new_state) -> None:
     self._state = new_state
@@ -91,37 +149,36 @@ class SerialWorker():
   def _worker_callback(self) -> None:
     STATES = SerialWorker.STATES
     while not self._is_stop.is_set():
-
-      if len(serial.tools.list_ports.comports()) == 0:
-        self.trs(STATES.CLOSE)
-
       if self._state == STATES.WAIT:
-        potrs = serial.tools.list_ports.comports()
-        if len(potrs) > 0:
+        self.ports = serial.tools.list_ports.comports()
+
+        if len(self.ports) > 0:
           self.trs(STATES.CONNECTING)
       elif self._state == STATES.CONNECTING:
         self.serial_port.port = self.port
         self.serial_port.baudrate = 115200
         try:
           self.serial_port.open()
-          self.serial_port.flush()
           self.trs(STATES.READ)
         except Exception as e:
           print("Error: " + str(e))
       elif self._state == STATES.READ:
         try:
-          if self.serial_port.in_waiting:
-            data = self.serial_port.readline()
-            if len(data):
-              data = data.decode('utf-8')
-              data_list = data.split(" ")
-              if len(data_list) > 3:
-                self.model.set_uart_data({"state": data_list[0], "load": data_list[1], "current": data_list[2]})
-              else:
-                print("Bad data")
-                self.serial_port.flush()
+          if self.serial_port.in_waiting > 5:
+            self.msg.data = self.serial_port.read_until().decode()
+            # print(self.msg)
+            if self.msg.find_start() and self.msg.find_end() and self.msg.is_data_exist():
+              self.trs(STATES.PARSE)
         except Exception as e:
           print(str(e))
+
+      elif self._state == STATES.PARSE:
+        self.msg.parse()
+        self.msg.to_dict()
+        # print(self.msg.d)
+        self.model.set_uart_data(self.msg.d)
+        self.trs(STATES.READ)
+
       elif self._state == STATES.CLOSE:
         try:
           self.serial_port.close()
@@ -141,34 +198,35 @@ class SerialWorker():
     self.worker.join()
 
 
-def get_serial_ports() -> list:
-  serial_ports = serial.tools.list_ports.comports()
-  for i in serial_ports:
-    print(i)
-  return [port.name for port in serial_ports]
-
-
 class SocketWorkerNamespace(Namespace):
   def __init__(self, model: Model, namespace: Union[str, None] = None) -> None:
     super().__init__(namespace)
     self.model = model
+    self._label = f"[{self.__class__.__name__}] "
 
   def on_connect(self):
-    print("on_connect")
+    debug_msg(self._label + "on_connect")
     self.model.is_client_connected = True
     self.model.notify(ObsEvent.CONNECTION)
 
   def on_disconnect(self):
-    print("on_disconnect")
+    debug_msg(self._label + "on_disconnect")
     self.model.is_client_connected = False
     self.model.notify(ObsEvent.DISCONNECTION)
 
   def on_my_event(self, data):
-    print(data)
+    debug_msg(data)
     self.emit('my_response', data)
 
-  def update_serial_data(self) -> None:
+  def update_serial_data(self) -> bool:
     self.emit("serial_data", self.model.serial_data)
+
+  def update_ports_list(self, ports: List[ListPortInfo]) -> bool:
+    if not self.model.is_client_connected:
+      debug_msg(self._label + "Client not connected")
+      return False
+
+    debug_msg("Update ports")
 
   def request(self, data):
     pass
@@ -196,7 +254,6 @@ class Controller(Subscriber):
     print("Disconnection")
 
   def new_data(self, i) -> None:
-    print(self.model.serial_data)
     self._socket.update_serial_data()
 
   def update(self, event: ObsEvent) -> None:
@@ -217,12 +274,12 @@ def no_serial(error) -> str:
 
 @app.route("/")
 def home() -> str:
-  return render_template(Templates.index, ports=get_serial_ports())
+  return render_template(Templates.index)
 
 
 if __name__ == "__main__":
   model = Model()
-  sw = SerialWorker(60, model)
+  sw = SerialWorker(30, model)
   socket_ns = SocketWorkerNamespace(model, "/")
   socketio.on_namespace(socket_ns)
   controller = Controller(app, socket_ns, model)

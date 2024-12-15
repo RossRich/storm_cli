@@ -2,7 +2,7 @@
 <html>
 
 <head>
-  {% block header %}
+  {% block head %}
   <meta charset="UTF-8">
   <title>{% block title %}{% endblock %}</title>
 
@@ -12,6 +12,8 @@
   <!--Import materialize.css-->
   <link type="text/css" rel="stylesheet" href="{{ url_for('static', filename='css/materialize.min.css') }}"
     media="screen,projection" />
+  <link type="text/css" rel="stylesheet" href="{{ url_for('static', filename='css/sidenav_fixed.css') }}"
+    media="screen,projection" />
 
   <!--Let browser know website is optimized for mobile-->
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -20,46 +22,67 @@
 </head>
 
 <body>
-  {% block navigation %}
+  <header>
+    {% block navigation %}
+    <nav class="top-nav nav-extended blue" role="navigation">
+      <div class="nav-wrapper">
+        <a href="#" data-target="nav-mobile" class="top-nav sidenav-trigger hide-on-large-only">
+          <i class="material-icons">menu</i>
+        </a>
+        <a href="#!" class="brand-logo center">Измерение</a>
+      </div>
+    </nav>
+    <ul id="nav-mobile" class="sidenav sidenav-fixed">
+      <li class="logo">
+        <div class="center-align">
+          <i class="material-icons large blue-text text-darken-2">assessment</i>
+        </div>
+        <div>
+          <h4 class="center-align no-padding blue-text text-darken-2">КИП ВМГ 11/24</h4>
+        </div>
+      </li>
+      <li>
+        <div class="divider"></div>
+      </li>
+      <li><a class="waves-effect blue-text text-darken-2" href="#!">Lorem, ipsum dolor.</a></li>
+      <li><a class="waves-effect blue-text text-darken-2" href="#!">Lorem, ipsum dolor.</a></li>
+      <!-- <li><a class="subheader">Subheader</a></li> -->
+      <li>
+        <div class="divider"></div>
+      </li>
+      <li>
+        <a href="#select_port_modal" class="btn-flat waves-effect modal-trigger blue-text disabled"><i
+            class="material-icons left blue-text">usb</i>Подключение</a>
+      </li>
+    </ul>
+    {% endblock %}
+  </header>
 
-  <ul id="cmn_ports" class="dropdown-content">
-    {% if ports|length > 0 %}
-      {% for port in ports %}
-        <li><a href="#!">{{port|e}}</a></li>
-      {% endfor %}
-    {% endif %}
-  </ul>
-
-  <nav class="light-blue lighten-1" role="navigation">
-    <div class="nav-wrapper container">
-      <a id="logo-container" href="#" class="brand-logo"><i class="material-icons medium">assessment</i>КИП ВМГ
-        11/24</a>
-      <ul class="right hide-on-med-and-down">
-        <li>
-          {# <div class="input-field">
-            <select>
-              <option value="" disabled selected>Choose your option</option>
-              <option value="1">Option 1</option>
-              <option value="2">Option 2</option>
-              <option value="3">Option 3</option>
-            </select>
-            <label>Materialize Select</label>
-          </div> #}
-        </li>
-        <li><a href="#!" class="dropdown-trigger dropdown_ports" data-target="cmn_ports"><i
-              class="material-icons left">usb</i>Подключение</a></li>
-      </ul>
-
-      <ul id="nav-mobile" class="sidenav">
-        <li><a href="#">Navbar Link</a></li>
-      </ul>
-      <a href="#" data-target="nav-mobile" class="sidenav-trigger"><i class="material-icons">menu</i></a>
+  <main>
+    <div class="container">
+      {% block content %}{% endblock %}
     </div>
-  </nav>
-  {% endblock %}
+  </main>
 
-  <div class="container content">
-    {% block content %}{% endblock %}
+  <footer></footer>
+
+  <div id="select_port_modal" class="modal modal-fixed-footer1">
+    <div class="modal-content">
+      <h4>Подключение к последовательному порту</h4>
+      <div class="row">
+        <div class="input-field col s12">
+          <select id="port_selector">
+            <option value="" disabled selected>Выбрать</option>
+          </select>
+          <label>Доступные порты</label>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <a href="#!" class="modal-close waves-effect waves-red btn-flat"><i class="material-icons">close</i></a>
+      <a href="#!" id="action_end" class="modal-close waves-effect waves-green btn-flat"><i
+          class="material-icons">check</i></a>
+    </div>
   </div>
 
   {% block scripts %}
@@ -74,35 +97,9 @@
   <!--Init materialize-->
   <script type="text/javascript" charset="utf-8">
     M.AutoInit()
-    // var elems = document.querySelectorAll('.dropdown-trigger.dropdown_ports');
-    // var instances = M.Dropdown.init(elems, { "onCloseEnd": () => { console.log($(".dropdown-trigger.dropdown_ports")); } });
   </script>
 
-  <script type="text/javascript" charset="utf-8">
-    var socket = io();
-    socket.on('connect', function () {
-      M.toast({ html: 'Connected' })
-    });
-
-    socket.on("serial_data", (msg) => {
-      console.log(msg)
-    });
-
-    socket.on("request", (msg) => {
-      M.toast({ html: msg.data })
-      if (msg.event == "new_port") {
-        console.log(msg.data)
-        for (let i = 0; i < msg.data.length; i++) {
-          $("ul#cmn_ports").append($("<li/>", {
-            html: "<a href='#!'>" + msg.data[i] + "</a>"
-          }));
-        }
-
-      }
-    })
-  </script>
-
-
+  <script type="text/javascript" src="{{ url_for('static', filename='js/communication.js') }}"></script>
 
   {% endblock %}
 
