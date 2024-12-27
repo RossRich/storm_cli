@@ -5,7 +5,7 @@ from ctypes import Structure, c_bool, c_float, c_int
 from json import load
 import queue
 from typing import Any, Callable, Dict, List, Union
-from enum import IntEnum, auto, unique
+from enum import Enum, IntEnum, auto, unique
 from threading import Event, Thread
 import time
 import serial
@@ -16,8 +16,16 @@ import serial.tools
 import serial.tools.list_ports
 from serial.tools.list_ports_common import ListPortInfo
 from static_data import Templates
+import pathlib
+
+DATA_STORAGE = "data"
 
 DEBUG_ENABLED = True
+
+
+class CMDS(Enum):
+  START_TEST = "101"
+  START_CALIB = "212"
 
 
 def debug_msg(msg):
@@ -29,7 +37,7 @@ def debug_msg(msg):
 class SerialMsg():
   DATA_LEN = 25
   START_COND = '$'
-  END_COND = '\n'
+  END_COND = '!'
 
   def __init__(self):
     self.data = 'x' * SerialMsg.DATA_LEN
@@ -50,7 +58,7 @@ class SerialMsg():
     return self.start_idx != -1 and self.end_idx != -1 and self.end_idx > self.start_idx
 
   def find_start(self) -> bool:
-    self.data = '$' + self.data.split('$')[-1]
+    self.data = SerialMsg.START_COND + self.data.split(SerialMsg.START_COND)[-1]
     self.start_idx = self.data.find(SerialMsg.START_COND)
     return self.start_idx != -1
 
@@ -68,8 +76,8 @@ class SerialMsg():
   def to_dict(self) -> None:
     if len(self.data_list) >= 5:
       self.d["state"] = self.data_list[0]
-      self.d["weight"] = self.data_list[1]
-      self.d["current"] = self.data_list[2]
+      self.d["weight"] = int(self.data_list[1]) / 1000.0
+      self.d["current"] = int(self.data_list[2]) / 10.0
       self.d["voltage"] = self.data_list[3]
       self.d["pwm"] = self.data_list[4]
 
@@ -81,6 +89,7 @@ class ObsEvent(IntEnum):
   NEW_DATA = auto()
   NEW_PORT = auto()
   SELECT_PORT = auto()
+  NEW_CMD = auto()
 
 
 class Subscriber():
@@ -106,12 +115,14 @@ class Publisher():
 class Model(Publisher):
   def __init__(self) -> None:
     super().__init__()
+    self._label = f"[{self.__class__.__name__}] "
     self.serial_data: Dict[str, float] = {}
     self.is_client_connected = False
     self.is_port_opened = False
     self.ports: List[ListPortInfo] = []
     self.port: ListPortInfo = ListPortInfo("invalid", True)
     self.baudrate = 115200
+    self.cmds: List[CMDS] = []
 
   def connection_port(self, port: ListPortInfo, baudrate: int = 115200) -> None:
     self.port = port
@@ -134,6 +145,10 @@ class Model(Publisher):
     self.serial_data = data
     self.notify(ObsEvent.NEW_DATA)
 
+  def set_new_cmd(self, cmd: CMDS) -> None:
+    debug_msg(self._label + f"New cmd: {cmd}")
+    self.cmds.append(cmd)
+
 
 class SerialWorker():
   class FMStates(IntEnum):
@@ -142,7 +157,7 @@ class SerialWorker():
     CONNECTING = auto()
     READ = auto()
     PARSE = auto()
-    CMD = auto()
+    WRITE_CMD = auto()
     CLOSE = auto()
 
   def __init__(self, rate: int, model: Model) -> None:
@@ -158,6 +173,9 @@ class SerialWorker():
     self.model = model
     self.msg = SerialMsg()
     self.ports = []
+    self._is_write_req = False
+    self._is_file_open = False
+    self._data_storage = pathlib.Path(DATA_STORAGE)
 
   @property
   def fsm_state(self) -> 'SerialWorker.FMStates':
@@ -186,7 +204,7 @@ class SerialWorker():
         if self.model.port.name == "invalid" or self.model.baudrate <= 0:
           debug_msg("Bad port")
           self.trs(FS.WAIT)
-          return
+          continue
 
         self.serial_port.port = self.model.port.device
         self.serial_port.baudrate = self.model.baudrate
@@ -212,8 +230,18 @@ class SerialWorker():
         self.msg.parse()
         self.msg.to_dict()
         # print(self.msg.d)
+        # if (self.msg.d["state"] == 4 and not self._is_file_open):
+          # file_name = 
         self.model.set_uart_data(self.msg.d)
         self.trs(FS.READ)
+
+      elif self.in_state(FS.WRITE_CMD):
+        if len(self.model.cmds) == 0:
+          self._is_write_req = False
+          self.trs(FS.READ)
+          continue
+
+        self.serial_port.write(str.encode(self.model.cmds.pop().value))
 
       elif self.in_state(FS.CLOSE):
         try:
@@ -222,6 +250,10 @@ class SerialWorker():
           print("Port close")
         except:
           pass
+
+      if self._is_write_req:
+        self.trs(FS.WRITE_CMD)
+        continue
 
       time.sleep(self._rate)
 
@@ -233,6 +265,10 @@ class SerialWorker():
 
   def connect(self) -> None:
     self.trs(SerialWorker.FMStates.CONNECTING)
+
+  def start_test(self) -> None:
+    if self.serial_port.is_open:
+      self._is_write_req = True
 
   def disconnect(self) -> None:
     self.trs(SerialWorker.FMStates.CLOSE)
@@ -268,6 +304,12 @@ class SocketWorker(Namespace):
         self.model.port = i
         self.model.notify(ObsEvent.SELECT_PORT)
         break
+
+  def on_new_cmd(self, data):
+    debug_msg(self._label + "New test request")
+    cmd = CMDS(data["cmd"])
+    self.model.set_new_cmd(cmd)
+    self.model.notify(ObsEvent.NEW_CMD)
 
   def update_serial_data(self) -> bool:
     self.emit("update_serial_data", self.model.serial_data)
@@ -306,6 +348,7 @@ class Controller(Subscriber):
       ObsEvent.NEW_DATA: self.update_data,
       ObsEvent.NEW_PORT: self.update_ports,
       ObsEvent.SELECT_PORT: self.connect_to_port,
+      ObsEvent.NEW_CMD: self.send_cmd
     }
 
   def on_connection(self, ignore) -> None:
@@ -329,6 +372,10 @@ class Controller(Subscriber):
     if self.model.port.name != "invalid":
       self.serial.connect()
 
+  def send_cmd(self, event: ObsEvent) -> None:
+    debug_msg(self._label + "Start cmd")
+    self.serial.start_test()
+
   def update(self, event: ObsEvent) -> None:
     handler = self.event_handlers.get(event, None)
     if handler:
@@ -351,6 +398,11 @@ def home() -> str:
 
 
 if __name__ == "__main__":
+
+  if not pathlib.Path(DATA_STORAGE).exists():
+    debug_msg(f"[SYS] Create folder {DATA_STORAGE}")
+    pathlib.Path(DATA_STORAGE).mkdir(parents=True, exist_ok=True)
+
   model = Model()
   sw = SerialWorker(30, model)
   socket_ns = SocketWorker(model, "/")

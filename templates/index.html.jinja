@@ -10,13 +10,93 @@
 {{ super() }}
 
 <div class="row">
-
-  <div class="col s12">
-    <div class="video-container">
-      <canvas id="myChart"></canvas>
+  <div class="col s12 xl8">
+    <div class="row">
+      <div class="card-panel hoverable">
+        <div class="video-container">
+          <canvas id="main_chart"></canvas>
+        </div>
+      </div>
+    </div>
+    <div class="row">
+      <div class="card-panel hoverable">
+        <ul class="collection with-header">
+          <li class="collection-header"><h4>История</h4></li>
+          <li class="collection-item">ПУСТО</li>
+          <li class="collection-item avatar hide">
+            <i class="material-icons circle green">insert_chart</i>
+            <span class="title">Title</span>
+            <p>First Line <br>
+              Second Line
+            </p>
+            <a href="#!" class="secondary-content"><i class="material-icons">grade</i></a>
+          </li>
+        </ul>
+      </div>
+    </div>
+  </div>
+  <div class="col s12 xl4">
+    <div class="card-panel hoverable action_panel">
+      <h5>Управление</h5>
+      <div class="section">
+        <a class="waves-effect waves-light btn blue" id="start_test">Начать тест</a>
+      </div>
+      </ul>
+    </div>
+  </div>
+  <div class="col s12 xl4">
+    <div class="card-panel digits-panel">
+      <div class="valign-wrapper tooltipped" data-position="left" data-tooltip="вольт">
+        <!-- <i class="material-icons small">chevron_right</i> -->
+        <h5>V: <span id="voltage_val">0.0</span></h5>
+      </div>
+      <div class="valign-wrapper tooltipped" data-position="left" data-tooltip="ампер">
+        <!-- <i class="material-icons small">chevron_right</i> -->
+        <h5>A: <span id="current_val">0.0</span></h5>
+      </div>
+      <div class="valign-wrapper tooltipped" data-position="left" data-tooltip="килограмм">
+        <!-- <i class="material-icons small">chevron_right</i> -->
+        <h5>Тяга: <span id="weight_val">0.0</span></h5>
+      </div>
+      <div class="valign-wrapper tooltipped" data-position="left" data-tooltip="частота ШИМ">
+        <!-- <i class="material-icons small">chevron_right</i> -->
+        <h5>Газ: <span id="throttle_val">0.0</span></h5>
+      </div>
+      <div class="divider"></div>
+      <div class="valign-wrapper tooltipped" data-position="left" data-tooltip="эффективность">
+        <!-- <i class="material-icons small">chevron_right</i> -->
+        <h5>КЭ: <span id="performance_val">0.0</span>&nbsp;г/вт</h5>
+      </div>
     </div>
   </div>
 </div>
+
+<!-- <div class="row">
+  <div class="col s12 m6 xl3">
+    <div class="card-panel hoverable">
+      <span class="card-title">Тяга</span>
+      <canvas id="weight_chart"></canvas>
+    </div>
+  </div>
+  <div class="col s12 m6 xl3">
+    <div class="card-panel hoverable">
+      <span class="card-title">Напряжение</span>
+      <canvas id="voltage_chart"></canvas>
+    </div>
+  </div>
+  <div class="col s12 m6 xl3">
+    <div class="card-panel hoverable">
+      <span class="card-title">Ток</span>
+      <canvas id="current_chart"></canvas>
+    </div>
+  </div>
+  <div class="col s12 m6 xl3">
+    <div class="card-panel hoverable">
+      <span class="card-title">Газ</span>
+      <canvas id="throttle_chart"></canvas>
+    </div>
+  </div>
+</div> -->
 {% endblock content %}
 
 {% block scripts %}
