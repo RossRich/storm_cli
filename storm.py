@@ -21,11 +21,13 @@ import pathlib
 DATA_STORAGE = "data"
 
 DEBUG_ENABLED = True
+UPDATE_UI_DATA_DT = 0.25 # задержка обновления данных в интрерфейсе, сек
 
 
 class CMDS(Enum):
   START_TEST = "101"
   START_CALIB = "212"
+  STOP_TEST = "254"
 
 
 def debug_msg(msg):
@@ -35,7 +37,7 @@ def debug_msg(msg):
 
 
 class SerialMsg():
-  DATA_LEN = 25
+  DATA_LEN = 27
   START_COND = '$'
   END_COND = '!'
 
@@ -76,9 +78,9 @@ class SerialMsg():
   def to_dict(self) -> None:
     if len(self.data_list) >= 5:
       self.d["state"] = self.data_list[0]
-      self.d["weight"] = int(self.data_list[1]) / 1000.0
-      self.d["current"] = int(self.data_list[2]) / 10.0
-      self.d["voltage"] = self.data_list[3]
+      self.d["weight"] = float(self.data_list[1]) / 1000.0
+      self.d["current"] = float(self.data_list[2]) / 10.0
+      self.d["voltage"] = float(self.data_list[3]) / 10.0
       self.d["pwm"] = self.data_list[4]
 
 
@@ -176,6 +178,7 @@ class SerialWorker():
     self._is_write_req = False
     self._is_file_open = False
     self._data_storage = pathlib.Path(DATA_STORAGE)
+    self._skip_data_timer = 0
 
   @property
   def fsm_state(self) -> 'SerialWorker.FMStates':
@@ -211,6 +214,7 @@ class SerialWorker():
 
         try:
           self.serial_port.open()
+          self._skip_data_timer = time.monotonic() + 5
           self.trs(FS.READ)
         except Exception as e:
           debug_msg("Error: " + str(e))
@@ -218,7 +222,7 @@ class SerialWorker():
 
       elif self.in_state(FS.READ):
         try:
-          if self.serial_port.in_waiting > 5:
+          if self.serial_port.in_waiting > 5 and self._skip_data_timer < time.monotonic():
             self.msg.data = self.serial_port.read_until().decode()
             # print(self.msg)
             if self.msg.find_start() and self.msg.find_end() and self.msg.is_data_exist():
@@ -362,7 +366,7 @@ class Controller(Subscriber):
 
   def update_data(self, i) -> None:
     if self._update_data_timer < time.monotonic():
-      self._update_data_timer = time.monotonic() + 1.0
+      self._update_data_timer = time.monotonic() + UPDATE_UI_DATA_DT
       self.socket.update_serial_data()
 
   def update_ports(self, i) -> None:

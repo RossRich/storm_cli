@@ -81,25 +81,33 @@ let OnDisconnect = function () {
   M.toast({ html: '<i class=\'material-icons\'>close</i> Связь с сервер потерена' })
 };
 
+let kp_val = 0.0;
+const filter_gain = 0.35;
+const HW_INIT = 0;
+const HW_IDLE = 1;
+const HW_RUN_TEST = 4;
+const HW_CALIB = 6;
+const HW_STOPING_WORK = 7;
+
 let OnDataReceived = function (serial_data) {
   if (C.data_list.length > 100) {
     C.data_list.shift();
   }
   C.data_list.push(serial_data);
 
+  C.hw_status = parseInt(serial_data["state"]);
   let voltage_val = serial_data["voltage"];
   let current_val = serial_data["current"];
   let weight_val = serial_data["weight"];
   let throttle_val = serial_data["pwm"];
-  let kp_val = 0.0;
-  if (parseFloat(weight_val) > 0) {
-    kp_val = parseFloat(weight_val) / (parseFloat(current_val) * parseFloat(voltage_val));
+  // let kp_val = 0.0;
+  if (parseFloat(weight_val) > 0.1) {
+    kp_val = (kp_val * filter_gain) + ((1 - filter_gain) * (parseFloat(weight_val) / (parseFloat(current_val) * parseFloat(voltage_val))));
     kp_val = Math.round(kp_val * 100) / 100;
   }
 
-
-  if (serial_data["state"] == 4) {
-    C.main_chart.data.labels.push(C.data_list.length);
+  if (C.hw_status == HW_RUN_TEST) {
+    C.main_chart.data.labels.push(C.main_chart.data.labels.length + 1);
     let current_arr = C.main_chart.data.datasets[0];
     let voltage_arr = C.main_chart.data.datasets[1];
     let throttle_arr = C.main_chart.data.datasets[2];
@@ -109,9 +117,10 @@ let OnDataReceived = function (serial_data) {
     voltage_arr.data.push(voltage_val);
     current_arr.data.push(current_val);
     weight_arr.data.push(weight_val);
-    throttle_arr.data.push(throttle_val);
+    let _range = parseFloat(throttle_val) - 1000.0;
+    throttle_arr.data.push(_range * 0.1);
     performance_arr.data.push(kp_val);
-    
+
     C.main_chart.update();
   }
 
@@ -169,10 +178,11 @@ let FindDigits = function () {
   const performance_item = panels.find("#performance_val").first();
 
   return { current: current_item, voltage: voltage_item, weight: weight_item, throttle: throttle_item, performance: performance_item };
-}
+};
 
 let OnStartTest = function (event) {
-  if (event.data.context.socket_io.active) {
+  let context = event.data.context;
+  if (context.socket_io.active && context.hw_status == HW_IDLE) {
     console.log("start test");
     event.data.context.socket_io.emit("new_cmd", { cmd: "101" });
     if (event.data.context.main_chart.data.labels.length > 10) {
@@ -181,13 +191,26 @@ let OnStartTest = function (event) {
     event.data.context.main_chart.data = structuredClone(chart_default_data);
     event.data.context.main_chart.update();
   }
-}
+};
+
+let OnStopTest = function (event) {
+  let context = event.data.context;
+  if (context.socket_io.active) {
+    console.log("stop test");
+    event.data.context.socket_io.emit("new_cmd", { cmd: "254" });
+  }
+};
 
 let OnStartCalibration = function (event) {
-  if (event.data.context.socket_io.active) {
+  let context = event.data.context;
+  if (context.socket_io.active && context.hw_status == HW_IDLE) {
     console.log("start calib");
     event.data.context.socket_io.emit("new_cmd", { cmd: "212" });
   }
+};
+
+let create_session_obj = function() {
+  return { time: Date(), is_notified: false };
 }
 
 C.AutoInit = function () {
@@ -199,11 +222,10 @@ C.AutoInit = function () {
   this.main_chart = build_mian_chart();
   this.digits = FindDigits();
   this.start_test_btn = $(".action_panel").find("a#start_test").first();
+  this.stop_test_btn = $(".action_panel").find("a#stop_test").first();
   this.start_calibration_btn = $("a#start_calibration").first();
-  // this.voltage_chart = build_param_chart("voltage_chart");
-  // this.current_chart = build_param_chart("current_chart")
-  // this.throttle_chart = build_param_chart("throttle_chart")
-  // this.weight_chart = build_param_chart("weight_chart")
+  this.hw_status = HW_INIT;
+  this.session_obj = create_session_obj();
   if (this.port_modal.$el.has("a#action_end").length > 0) {
     this.port_modal.$el.find("a#action_end").first().on("click", function () {
       if (C.socket_io.connected) {
@@ -228,32 +250,13 @@ C.AutoInit = function () {
     this.start_test_btn.click({ context: this }, OnStartTest);
   }
 
+  if (this.stop_test_btn != undefined) {
+    this.stop_test_btn.click({ context: this }, OnStopTest);
+  }
+
   if (this.start_calibration_btn != undefined) {
     this.start_calibration_btn.click({ context: this }, OnStartCalibration);
   }
 };
 
 C.AutoInit();
-// C.port_modal.open();
-// OnNewPort(C, ["test1", "test2"])
-
-/* socket.on('connect', function () {
-  M.toast({ html: 'Connected' })
-});
-
-socket.on("serial_data", (msg) => {
-
-});
-
-socket.on("request", (msg) => {
-  M.toast({ html: msg.data })
-  if (msg.event == "new_port") {
-    console.log(msg.data)
-    for (let i = 0; i < msg.data.length; i++) {
-      $("ul#cmn_ports").append($("<li/>", {
-        html: "<a href='#!'>" + msg.data[i] + "</a>"
-      }));
-    }
-
-  }
-}) */
