@@ -2,6 +2,7 @@
 
 from abc import ABC, abstractmethod
 from ctypes import Structure, c_bool, c_float, c_int
+from dataclasses import asdict, dataclass
 from json import load
 import queue
 from typing import Any, Callable, Dict, List, Union
@@ -21,7 +22,7 @@ import pathlib
 DATA_STORAGE = "data"
 
 DEBUG_ENABLED = True
-UPDATE_UI_DATA_DT = 0.25 # задержка обновления данных в интрерфейсе, сек
+UPDATE_UI_DATA_DT = 0.25  # задержка обновления данных в интрерфейсе, сек
 
 
 class CMDS(Enum):
@@ -114,6 +115,16 @@ class Publisher():
       s.update(event)
 
 
+@dataclass
+class HWSetup():
+  max_throttle = 0
+  min_pwm = 1000
+  max_pwm = 2000
+
+  def to_dict(self) -> Dict[str: int]:
+    return {k: v for k, v in asdict(self).items()}
+
+
 class Model(Publisher):
   def __init__(self) -> None:
     super().__init__()
@@ -125,6 +136,7 @@ class Model(Publisher):
     self.port: ListPortInfo = ListPortInfo("invalid", True)
     self.baudrate = 115200
     self.cmds: List[CMDS] = []
+    self.hw_setup = HWSetup()
 
   def connection_port(self, port: ListPortInfo, baudrate: int = 115200) -> None:
     self.port = port
@@ -150,6 +162,9 @@ class Model(Publisher):
   def set_new_cmd(self, cmd: CMDS) -> None:
     debug_msg(self._label + f"New cmd: {cmd}")
     self.cmds.append(cmd)
+
+  def update_hw_setup(self, hw_setup) -> None:
+    pass
 
 
 class SerialWorker():
@@ -235,7 +250,7 @@ class SerialWorker():
         self.msg.to_dict()
         # print(self.msg.d)
         # if (self.msg.d["state"] == 4 and not self._is_file_open):
-          # file_name = 
+        # file_name =
         self.model.set_uart_data(self.msg.d)
         self.trs(FS.READ)
 
@@ -309,11 +324,16 @@ class SocketWorker(Namespace):
         self.model.notify(ObsEvent.SELECT_PORT)
         break
 
-  def on_new_cmd(self, data):
+  def on_new_cmd(self, data) -> None:
     debug_msg(self._label + "New test request")
     cmd = CMDS(data["cmd"])
     self.model.set_new_cmd(cmd)
     self.model.notify(ObsEvent.NEW_CMD)
+
+  def on_update_setup(self, data) -> None:
+    debug_msg(self._label + "New setup")
+    debug_msg(self._label + str(data))
+    self.model
 
   def update_serial_data(self) -> bool:
     self.emit("update_serial_data", self.model.serial_data)

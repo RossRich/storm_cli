@@ -24,7 +24,7 @@
 <body>
   <header>
     {% block navigation %}
-    <nav class="top-nav nav-extended blue" role="navigation">
+    <nav class="top-nav nav-extended teal" role="navigation">
       <div class="nav-wrapper">
         <a href="#" data-target="nav-mobile" class="top-nav sidenav-trigger hide-on-large-only">
           <i class="material-icons">menu</i>
@@ -35,24 +35,23 @@
     <ul id="nav-mobile" class="sidenav sidenav-fixed">
       <li class="logo">
         <div class="center-align">
-          <i class="material-icons large blue-text text-darken-2">assessment</i>
+          <i class="material-icons large teal-text">assessment</i>
         </div>
         <div>
-          <h4 class="center-align no-padding blue-text text-darken-2">КИП ВМГ 11/24</h4>
+          <h4 class="center-align no-padding teal-text">КИП ВМГ 11/24</h4>
         </div>
       </li>
       <li>
         <div class="divider"></div>
       </li>
-      <li><a class="waves-effect blue-text text-darken-2" href="#!">Lorem, ipsum dolor.</a></li>
-      <li><a href="#start_calibration" class="btn-flat waves-effect blue-text" id="start_calibration">Калибровка</a></li>
+      <li><a href="#start_calibration" class="btn-flat waves-effect teal-text" id="start_calibration">Калибровка</a></li>
       <!-- <li><a class="subheader">Subheader</a></li> -->
       <li>
         <div class="divider"></div>
       </li>
       <li>
-        <a href="#select_port_modal" class="btn-flat waves-effect modal-trigger blue-text disabled"><i
-            class="material-icons left blue-text">usb</i>Подключение</a>
+        <a href="#select_port_modal" class="btn-flat waves-effect teal-text modal-trigger disabled"><i
+            class="material-icons teal-text left">usb</i>Подключение</a>
       </li>
     </ul>
     {% endblock %}
@@ -67,7 +66,7 @@
   <footer></footer>
 
   <div id="select_port_modal" class="modal modal-fixed-footer1">
-    <div class="modal-content">
+    <div class="modal-content teal-text">
       <h4>Подключение к последовательному порту</h4>
       <div class="row">
         <div class="input-field col s12">

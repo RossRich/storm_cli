@@ -209,7 +209,22 @@ let OnStartCalibration = function (event) {
   }
 };
 
-let create_session_obj = function() {
+let OnUpdateHWSetup = function (event) {
+  console.log("Update HW setup");
+  let context = event.data.context;
+  context.socket_io.emit("update_setup", context.setup);
+  // if (context.socket_io.active && context.hw_status == HW_IDLE) {
+  // }
+}
+
+let OnSetMaxThrotle = function (event) {
+  let context = event.data.context;
+  context.setup.max_throtle = parseInt($(this).val());
+  console.log("Max throtle: " + context.setup.max_throtle);
+  $(context).trigger("on_new_setup");
+}
+
+let create_session_obj = function () {
   return { time: Date(), is_notified: false };
 }
 
@@ -217,12 +232,14 @@ C.AutoInit = function () {
   this.ports_list = []
   this.data_list = []
   this.session = []
+  this.setup = {max_throtle: 0}
   this.port_selector = M.FormSelect.getInstance($("select#port_selector"));
   this.port_modal = M.Modal.getInstance($(".modal#select_port_modal"));
   this.main_chart = build_mian_chart();
   this.digits = FindDigits();
   this.start_test_btn = $(".action_panel").find("a#start_test").first();
   this.stop_test_btn = $(".action_panel").find("a#stop_test").first();
+  this.set_max_throtle_range = $(".action_panel").find("input#max_throtle").first();
   this.start_calibration_btn = $("a#start_calibration").first();
   this.hw_status = HW_INIT;
   this.session_obj = create_session_obj();
@@ -246,6 +263,8 @@ C.AutoInit = function () {
   });
   this.socket_io.on("update_serial_data", OnDataReceived);
 
+  $(this).on("on_new_setup", { context: this }, OnUpdateHWSetup);
+
   if (this.start_test_btn != undefined) {
     this.start_test_btn.click({ context: this }, OnStartTest);
   }
@@ -256,6 +275,10 @@ C.AutoInit = function () {
 
   if (this.start_calibration_btn != undefined) {
     this.start_calibration_btn.click({ context: this }, OnStartCalibration);
+  }
+
+  if (this.set_max_throtle_range != undefined) {
+    this.set_max_throtle_range.mouseup({ context: this }, OnSetMaxThrotle);
   }
 };
 

@@ -21,7 +21,9 @@
     <div class="row">
       <div class="card-panel hoverable">
         <ul class="collection with-header">
-          <li class="collection-header"><h4>История</h4></li>
+          <li class="collection-header">
+            <h4>История</h4>
+          </li>
           <li class="collection-item">ПУСТО</li>
           <li class="collection-item avatar hide">
             <i class="material-icons circle green">insert_chart</i>
@@ -37,14 +39,22 @@
   </div>
   <div class="col s12 xl4">
     <div class="card-panel hoverable action_panel">
-      <h5>Управление</h5>
+      <h4>Управление</h4>
       <div class="section">
-        <a class="waves-effect waves-light btn blue" id="start_test">Начать тест</a>
+        <h5>Настройка</h5>
+        <p class="range-field">
+          <input type="range" id="max_throtle" min="0" max="100" value="0"/>
+        </p>
       </div>
       <div class="section">
-        <a class="waves-effect waves-light btn blue" id="stop_test">Прервать тест</a>
+        <h5>Тестирование</h5>
+        <div class="section">
+          <a class="waves-effect waves-light btn" id="start_test">Начать</a>
+        </div>
+        <div class="section">
+          <a class="waves-effect waves-light btn" id="stop_test">Прервать</a>
+        </div>
       </div>
-      </ul>
     </div>
   </div>
   <div class="col s12 xl4">
