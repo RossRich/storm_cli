@@ -1,16 +1,12 @@
 #!/bin/python3
 
-from abc import ABC, abstractmethod
-from ctypes import Structure, c_bool, c_float, c_int
 from dataclasses import asdict, dataclass
-from json import load
-import queue
 from typing import Any, Callable, Dict, List, Union
 from enum import Enum, IntEnum, auto, unique
 from threading import Event, Thread
 import time
 import serial
-from flask import Flask, abort, redirect, url_for
+from flask import Flask
 from flask import render_template
 from flask_socketio import Namespace, SocketIO, emit
 import serial.tools
@@ -121,7 +117,7 @@ class HWSetup():
   min_pwm = 1000
   max_pwm = 2000
 
-  def to_dict(self) -> Dict[str: int]:
+  def to_dict(self) -> Dict[str, int]:
     return {k: v for k, v in asdict(self).items()}
 
 
