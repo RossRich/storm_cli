@@ -213,14 +213,15 @@ let OnUpdateHWSetup = function (event) {
   console.log("Update HW setup");
   let context = event.data.context;
   context.socket_io.emit("update_setup", context.setup);
+  console.log(context.setup);
   // if (context.socket_io.active && context.hw_status == HW_IDLE) {
   // }
 }
 
-let OnSetMaxThrotle = function (event) {
+let OnSetMaxThrottle = function (event) {
   let context = event.data.context;
-  context.setup.max_throtle = parseInt($(this).val());
-  console.log("Max throtle: " + context.setup.max_throtle);
+  context.setup.max_throttle = parseInt($(this).val());
+  console.log("Max throttle: " + context.setup.max_throttle);
   $(context).trigger("on_new_setup");
 }
 
@@ -232,14 +233,14 @@ C.AutoInit = function () {
   this.ports_list = []
   this.data_list = []
   this.session = []
-  this.setup = {max_throtle: 0}
+  this.setup = {max_throttle: 0, max_pwm: 2000, min_pwm: 1000}
   this.port_selector = M.FormSelect.getInstance($("select#port_selector"));
   this.port_modal = M.Modal.getInstance($(".modal#select_port_modal"));
   this.main_chart = build_mian_chart();
   this.digits = FindDigits();
   this.start_test_btn = $(".action_panel").find("a#start_test").first();
   this.stop_test_btn = $(".action_panel").find("a#stop_test").first();
-  this.set_max_throtle_range = $(".action_panel").find("input#max_throtle").first();
+  this.set_max_throttle_range = $(".action_panel").find("input#max_throttle").first();
   this.start_calibration_btn = $("a#start_calibration").first();
   this.hw_status = HW_INIT;
   this.session_obj = create_session_obj();
@@ -277,8 +278,8 @@ C.AutoInit = function () {
     this.start_calibration_btn.click({ context: this }, OnStartCalibration);
   }
 
-  if (this.set_max_throtle_range != undefined) {
-    this.set_max_throtle_range.mouseup({ context: this }, OnSetMaxThrotle);
+  if (this.set_max_throttle_range != undefined) {
+    this.set_max_throttle_range.mouseup({ context: this }, OnSetMaxThrottle);
   }
 };
 

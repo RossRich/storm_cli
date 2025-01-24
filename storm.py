@@ -2,9 +2,8 @@
 
 from abc import ABC, abstractmethod
 from ctypes import Structure, c_bool, c_float, c_int
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, fields
 from json import load
-import queue
 from typing import Any, Callable, Dict, List, Union
 from enum import Enum, IntEnum, auto, unique
 from threading import Event, Thread
@@ -18,6 +17,7 @@ import serial.tools.list_ports
 from serial.tools.list_ports_common import ListPortInfo
 from static_data import Templates
 import pathlib
+from dacite import from_dict
 
 DATA_STORAGE = "data"
 
@@ -93,6 +93,7 @@ class ObsEvent(IntEnum):
   NEW_PORT = auto()
   SELECT_PORT = auto()
   NEW_CMD = auto()
+  UPDATE_SETUP = auto()
 
 
 class Subscriber():
@@ -115,14 +116,29 @@ class Publisher():
       s.update(event)
 
 
+HW_TABLE = {"max_throttle": "MT"}
+
+@dataclass
+class HWSetup2():
+  max_pwm = 2000
+  min_pwm = 1000
+  max_throttle = max_pwm - min_pwm
+
 @dataclass
 class HWSetup():
-  max_throttle = 0
-  min_pwm = 1000
   max_pwm = 2000
+  min_pwm = 1000
+  max_throttle = max_pwm - min_pwm
 
-  def to_dict(self) -> Dict[str: int]:
+  @staticmethod
+  def from_dict2(dict: Dict) -> 'HWSetup':
+    return from_dict(HWSetup, dict)
+
+  def to_dict(self) -> Dict[str, int]:
     return {k: v for k, v in asdict(self).items()}
+
+  def to_str(self) -> str:
+    return ';'.join([v for _, v in self.to_dict().items()])
 
 
 class Model(Publisher):
@@ -162,9 +178,21 @@ class Model(Publisher):
   def set_new_cmd(self, cmd: CMDS) -> None:
     debug_msg(self._label + f"New cmd: {cmd}")
     self.cmds.append(cmd)
+    self.notify(ObsEvent.NEW_CMD)
 
-  def update_hw_setup(self, hw_setup) -> None:
-    pass
+  def update_hw_setup(self, hw_setup: HWSetup) -> None:
+    debug_msg(self._label + str(hw_setup.max_throttle))
+    debug_msg(self._label + str(hw_setup.max_pwm))
+    debug_msg(self._label + str(hw_setup.min_pwm))
+    update_count = 0
+    for key, val in hw_setup.to_dict().items():
+      if self.hw_setup[key] != val:
+        update_count += 1
+        self.hw_setup[key] = val
+
+    if update_count > 0:
+      debug_msg(self._label + "Update params")
+      self.notify(ObsEvent.UPDATE_SETUP)
 
 
 class SerialWorker():
@@ -175,6 +203,8 @@ class SerialWorker():
     READ = auto()
     PARSE = auto()
     WRITE_CMD = auto()
+    WRITE_SETUP = auto()
+    WAIT_RESPONSE = auto()
     CLOSE = auto()
 
   def __init__(self, rate: int, model: Model) -> None:
@@ -191,9 +221,11 @@ class SerialWorker():
     self.msg = SerialMsg()
     self.ports = []
     self._is_write_req = False
+    self._is_update_req = False
     self._is_file_open = False
     self._data_storage = pathlib.Path(DATA_STORAGE)
     self._skip_data_timer = 0
+    self._response_timer = 0
 
   @property
   def fsm_state(self) -> 'SerialWorker.FMStates':
@@ -202,8 +234,9 @@ class SerialWorker():
   def in_state(self, state: 'SerialWorker.FMStates') -> bool:
     return self.fsm_state == state
 
-  def trs(self, new_state: 'SerialWorker.FMStates') -> None:
-    debug_msg(self._label + f"Transition: {self._state.name} -> {new_state.name}")
+  def trs(self, new_state: 'SerialWorker.FMStates', verbose = True) -> None:
+    if verbose:
+      debug_msg(self._label + f"Transition: {self._state.name} -> {new_state.name}")
     self._state = new_state
 
   def _worker_callback(self) -> None:
@@ -241,7 +274,7 @@ class SerialWorker():
             self.msg.data = self.serial_port.read_until().decode()
             # print(self.msg)
             if self.msg.find_start() and self.msg.find_end() and self.msg.is_data_exist():
-              self.trs(FS.PARSE)
+              self.trs(FS.PARSE, False)
         except Exception as e:
           print(str(e))
 
@@ -252,7 +285,7 @@ class SerialWorker():
         # if (self.msg.d["state"] == 4 and not self._is_file_open):
         # file_name =
         self.model.set_uart_data(self.msg.d)
-        self.trs(FS.READ)
+        self.trs(FS.READ, False)
 
       elif self.in_state(FS.WRITE_CMD):
         if len(self.model.cmds) == 0:
@@ -260,7 +293,49 @@ class SerialWorker():
           self.trs(FS.READ)
           continue
 
-        self.serial_port.write(str.encode(self.model.cmds.pop().value))
+        cmd = self.model.cmds.pop()
+
+        try:
+          self.serial_port.write(str.encode(cmd.value))
+        except:
+          debug_msg(self._label + f"Failed to receive command {cmd}")
+          self.model.cmds.append(cmd)
+
+      elif self.in_state(FS.WRITE_SETUP):
+        hw_str = self.model.hw_setup.to_str()
+        if hw_str == ";":
+          debug_msg(self._label + "Invalid value")
+          self._is_update_req = False
+          self.trs(FS.READ)
+          continue
+
+        hw_str = f"${hw_str}!"
+        try:
+          self.serial_port.write(str.encode(hw_str))
+          self._is_update_req = False
+          self.trs(FS.WAIT_RESPONSE)
+        except:
+          debug_msg(self._label + "Failed to receive setup")
+
+      elif self.in_state(FS.WAIT_RESPONSE):
+        if self._response_timer == 0:
+          self._response_timer = time.monotonic() + 3.0
+
+        try:
+          if self.serial_port.in_waiting > 5:
+            _msg = SerialMsg()
+            _msg.data = self.serial_port.read_until().decode()
+            if _msg.find_start() and _msg.find_end() and _msg.is_data_exist():
+              debug_msg(self._label + str(_msg.data_list))
+              self._response_timer = 0
+              self.trs(FS.READ)
+        except Exception as e:
+          print(str(e))
+
+        if self._response_timer < time.monotonic():
+          self._response_timer = 0
+          debug_msg(self._label + "Response failed")
+          self.trs(FS.READ)
 
       elif self.in_state(FS.CLOSE):
         try:
@@ -273,6 +348,9 @@ class SerialWorker():
       if self._is_write_req:
         self.trs(FS.WRITE_CMD)
         continue
+      elif self._is_update_req:
+        self.trs(FS.WRITE_SETUP)
+        continue
 
       time.sleep(self._rate)
 
@@ -284,6 +362,10 @@ class SerialWorker():
 
   def connect(self) -> None:
     self.trs(SerialWorker.FMStates.CONNECTING)
+
+  def send_setup(self) -> None:
+    if self.serial_port.is_open:
+      self._is_update_req = True
 
   def start_test(self) -> None:
     if self.serial_port.is_open:
@@ -328,12 +410,13 @@ class SocketWorker(Namespace):
     debug_msg(self._label + "New test request")
     cmd = CMDS(data["cmd"])
     self.model.set_new_cmd(cmd)
-    self.model.notify(ObsEvent.NEW_CMD)
 
   def on_update_setup(self, data) -> None:
     debug_msg(self._label + "New setup")
     debug_msg(self._label + str(data))
-    self.model
+    debug_msg(from_dict(HWSetup2, data))
+    debug_msg(str(HWSetup.from_dict2(data)))
+    # self.model.update_hw_setup()
 
   def update_serial_data(self) -> bool:
     self.emit("update_serial_data", self.model.serial_data)
@@ -372,7 +455,8 @@ class Controller(Subscriber):
       ObsEvent.NEW_DATA: self.update_data,
       ObsEvent.NEW_PORT: self.update_ports,
       ObsEvent.SELECT_PORT: self.connect_to_port,
-      ObsEvent.NEW_CMD: self.send_cmd
+      ObsEvent.NEW_CMD: self.send_cmd,
+      ObsEvent.UPDATE_SETUP: self.update_setup
     }
 
   def on_connection(self, ignore) -> None:
@@ -399,6 +483,9 @@ class Controller(Subscriber):
   def send_cmd(self, event: ObsEvent) -> None:
     debug_msg(self._label + "Start cmd")
     self.serial.start_test()
+
+  def update_setup(self, event: ObsEvent) -> None:
+    self.serial.send_setup()
 
   def update(self, event: ObsEvent) -> None:
     handler = self.event_handlers.get(event, None)
