@@ -9,7 +9,7 @@ from enum import Enum, IntEnum, auto, unique
 from threading import Event, Thread
 import time
 import serial
-from flask import Flask, abort, redirect, url_for
+from flask import Flask
 from flask import render_template
 from flask_socketio import Namespace, SocketIO, emit
 import serial.tools
