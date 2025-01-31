@@ -220,7 +220,8 @@ let OnUpdateHWSetup = function (event) {
 
 let OnSetMaxThrottle = function (event) {
   let context = event.data.context;
-  context.setup.max_throttle = parseInt($(this).val());
+  let max_throttle_percentage = parseFloat($(this).val()) / 100.0;
+  context.setup.max_throttle = Math.fround((context.setup.max_pwm - context.setup.min_pwm) * max_throttle_percentage)
   console.log("Max throttle: " + context.setup.max_throttle);
   $(context).trigger("on_new_setup");
 }
@@ -233,7 +234,7 @@ C.AutoInit = function () {
   this.ports_list = []
   this.data_list = []
   this.session = []
-  this.setup = {max_throttle: 0, max_pwm: 2000, min_pwm: 1000}
+  this.setup = { max_throttle: 0, max_pwm: 2000, min_pwm: 1000 }
   this.port_selector = M.FormSelect.getInstance($("select#port_selector"));
   this.port_modal = M.Modal.getInstance($(".modal#select_port_modal"));
   this.main_chart = build_mian_chart();

@@ -1,6 +1,7 @@
 #!/bin/python3
 
 from abc import ABC, abstractmethod
+from collections import OrderedDict
 from ctypes import Structure, c_bool, c_float, c_int
 from dataclasses import asdict, dataclass, fields
 from json import load
@@ -29,6 +30,7 @@ class CMDS(Enum):
   START_TEST = "101"
   START_CALIB = "212"
   STOP_TEST = "254"
+  UPDATE_SETUP = "35"
 
 
 def debug_msg(msg):
@@ -48,10 +50,11 @@ class SerialMsg():
     self.end_idx = -1
     self.len = 0
     self.data_list = []
+    self.type = 'D'
     self.d = {"state": 0, "weight": 0.0, "current": 0.0, "voltage": 0.0, "pwm": 0}
 
   def __str__(self):
-    return self.data
+    return f"***HW MSG***\ntype: {self.type}\ndata: {self.data_list}\n"
 
   def reset(self) -> None:
     self.start_idx = -1
@@ -74,15 +77,16 @@ class SerialMsg():
 
   def parse(self) -> int:
     self.data_list = self.data[self.start_idx + 1:self.end_idx].split(';')
+    self.type = self.data_list[0]
     return len(self.data_list)
 
   def to_dict(self) -> None:
     if len(self.data_list) >= 5:
-      self.d["state"] = self.data_list[0]
-      self.d["weight"] = float(self.data_list[1]) / 1000.0
-      self.d["current"] = float(self.data_list[2]) / 10.0
-      self.d["voltage"] = float(self.data_list[3]) / 10.0
-      self.d["pwm"] = self.data_list[4]
+      self.d["state"] = self.data_list[1]
+      self.d["weight"] = float(self.data_list[2]) / 1000.0
+      self.d["current"] = float(self.data_list[3]) / 10.0
+      self.d["voltage"] = float(self.data_list[4]) / 10.0
+      self.d["pwm"] = self.data_list[5]
 
 
 @unique
@@ -116,29 +120,33 @@ class Publisher():
       s.update(event)
 
 
-HW_TABLE = {"max_throttle": "MT"}
+HW_TABLE = {"max_throttle": "MT", "max_pwm": "AP", "min_pwm": "IP"}
 
-@dataclass
-class HWSetup2():
-  max_pwm = 2000
-  min_pwm = 1000
-  max_throttle = max_pwm - min_pwm
 
-@dataclass
 class HWSetup():
-  max_pwm = 2000
-  min_pwm = 1000
-  max_throttle = max_pwm - min_pwm
+  def __init__(self, max_pwm: int = 2000, min_pwm: int = 1000):
+    self.param = OrderedDict()
+    self.param.setdefault("max_pwm", max_pwm)
+    self.param.setdefault("min_pwm", min_pwm)
+    self.param.setdefault("max_throttle", max_pwm - min_pwm)
+
+  def __str__(self):
+    return str(self.param)
 
   @staticmethod
-  def from_dict2(dict: Dict) -> 'HWSetup':
-    return from_dict(HWSetup, dict)
+  def from_dict(dict: Dict) -> 'HWSetup':
+    hw = HWSetup()
+    hw.param.update(dict)
+    return hw
 
   def to_dict(self) -> Dict[str, int]:
-    return {k: v for k, v in asdict(self).items()}
+    return self.param
 
   def to_str(self) -> str:
-    return ';'.join([v for _, v in self.to_dict().items()])
+    return ';'.join([' '.join((HW_TABLE[k], str(v))) for k, v in self.to_dict().items()])
+
+  def to_msg(self) -> str:
+    SerialMsg.START_COND + self.to_str() + SerialMsg.END_COND
 
 
 class Model(Publisher):
@@ -181,14 +189,12 @@ class Model(Publisher):
     self.notify(ObsEvent.NEW_CMD)
 
   def update_hw_setup(self, hw_setup: HWSetup) -> None:
-    debug_msg(self._label + str(hw_setup.max_throttle))
-    debug_msg(self._label + str(hw_setup.max_pwm))
-    debug_msg(self._label + str(hw_setup.min_pwm))
     update_count = 0
     for key, val in hw_setup.to_dict().items():
-      if self.hw_setup[key] != val:
+      print(key)
+      if self.hw_setup.to_dict()[key] != val:
         update_count += 1
-        self.hw_setup[key] = val
+        self.hw_setup.to_dict()[key] = val
 
     if update_count > 0:
       debug_msg(self._label + "Update params")
@@ -234,7 +240,7 @@ class SerialWorker():
   def in_state(self, state: 'SerialWorker.FMStates') -> bool:
     return self.fsm_state == state
 
-  def trs(self, new_state: 'SerialWorker.FMStates', verbose = True) -> None:
+  def trs(self, new_state: 'SerialWorker.FMStates', verbose=True) -> None:
     if verbose:
       debug_msg(self._label + f"Transition: {self._state.name} -> {new_state.name}")
     self._state = new_state
@@ -270,9 +276,9 @@ class SerialWorker():
 
       elif self.in_state(FS.READ):
         try:
-          if self.serial_port.in_waiting > 5 and self._skip_data_timer < time.monotonic():
+          if self.serial_port.in_waiting > 4 and self._skip_data_timer < time.monotonic():
             self.msg.data = self.serial_port.read_until().decode()
-            # print(self.msg)
+            print(self.msg.data)
             if self.msg.find_start() and self.msg.find_end() and self.msg.is_data_exist():
               self.trs(FS.PARSE, False)
         except Exception as e:
@@ -280,14 +286,17 @@ class SerialWorker():
 
       elif self.in_state(FS.PARSE):
         self.msg.parse()
-        self.msg.to_dict()
-        # print(self.msg.d)
-        # if (self.msg.d["state"] == 4 and not self._is_file_open):
-        # file_name =
-        self.model.set_uart_data(self.msg.d)
+
+        if self.msg.type == 'D':
+          self.msg.to_dict()
+          self.model.set_uart_data(self.msg.d)
+        else:
+          debug_msg(self._label + str(self.msg))
+
         self.trs(FS.READ, False)
 
       elif self.in_state(FS.WRITE_CMD):
+        debug_msg(self._label + str(self.model.cmds))
         if len(self.model.cmds) == 0:
           self._is_write_req = False
           self.trs(FS.READ)
@@ -302,16 +311,16 @@ class SerialWorker():
           self.model.cmds.append(cmd)
 
       elif self.in_state(FS.WRITE_SETUP):
+
         hw_str = self.model.hw_setup.to_str()
-        if hw_str == ";":
+        if hw_str == '':
           debug_msg(self._label + "Invalid value")
           self._is_update_req = False
           self.trs(FS.READ)
           continue
 
-        hw_str = f"${hw_str}!"
         try:
-          self.serial_port.write(str.encode(hw_str))
+          self.serial_port.write(str.encode(self.model.hw_setup.to_msg()))
           self._is_update_req = False
           self.trs(FS.WAIT_RESPONSE)
         except:
@@ -367,7 +376,7 @@ class SerialWorker():
     if self.serial_port.is_open:
       self._is_update_req = True
 
-  def start_test(self) -> None:
+  def send_cmd(self) -> None:
     if self.serial_port.is_open:
       self._is_write_req = True
 
@@ -414,9 +423,7 @@ class SocketWorker(Namespace):
   def on_update_setup(self, data) -> None:
     debug_msg(self._label + "New setup")
     debug_msg(self._label + str(data))
-    debug_msg(from_dict(HWSetup2, data))
-    debug_msg(str(HWSetup.from_dict2(data)))
-    # self.model.update_hw_setup()
+    self.model.update_hw_setup(HWSetup().from_dict(data))
 
   def update_serial_data(self) -> bool:
     self.emit("update_serial_data", self.model.serial_data)
@@ -469,6 +476,9 @@ class Controller(Subscriber):
     self.model.ports.clear()
 
   def update_data(self, i) -> None:
+
+    self.model.serial_data
+
     if self._update_data_timer < time.monotonic():
       self._update_data_timer = time.monotonic() + UPDATE_UI_DATA_DT
       self.socket.update_serial_data()
@@ -482,10 +492,11 @@ class Controller(Subscriber):
 
   def send_cmd(self, event: ObsEvent) -> None:
     debug_msg(self._label + "Start cmd")
-    self.serial.start_test()
+    self.serial.send_cmd()
 
   def update_setup(self, event: ObsEvent) -> None:
-    self.serial.send_setup()
+    self.model.set_new_cmd(CMDS.UPDATE_SETUP)
+    # self.serial.send_setup()
 
   def update(self, event: ObsEvent) -> None:
     handler = self.event_handlers.get(event, None)
