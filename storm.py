@@ -16,11 +16,10 @@ from flask_socketio import Namespace, SocketIO, emit
 import serial.tools
 import serial.tools.list_ports
 from serial.tools.list_ports_common import ListPortInfo
+from modules.observer import ObsEvent, Publisher, Subscriber
 from static_data import Templates
 import pathlib
-from dacite import from_dict
-
-DATA_STORAGE = "data"
+from modules.msg import MsgType, SetupMsg, DataMsg, SerialMsg
 
 DEBUG_ENABLED = True
 UPDATE_UI_DATA_DT = 0.25  # задержка обновления данных в интрерфейсе, сек
@@ -39,88 +38,7 @@ def debug_msg(msg):
     print(msg)
 
 
-class SerialMsg():
-  DATA_LEN = 27
-  START_COND = '$'
-  END_COND = '!'
-
-  def __init__(self):
-    self.data = 'x' * SerialMsg.DATA_LEN
-    self.start_idx = -1
-    self.end_idx = -1
-    self.len = 0
-    self.data_list = []
-    self.type = 'D'
-    self.d = {"state": 0, "weight": 0.0, "current": 0.0, "voltage": 0.0, "pwm": 0}
-
-  def __str__(self):
-    return f"***HW MSG***\ntype: {self.type}\ndata: {self.data_list}\n"
-
-  def reset(self) -> None:
-    self.start_idx = -1
-    self.end_idx = -1
-
-  def is_data_exist(self) -> bool:
-    return self.start_idx != -1 and self.end_idx != -1 and self.end_idx > self.start_idx
-
-  def find_start(self) -> bool:
-    self.data = SerialMsg.START_COND + self.data.split(SerialMsg.START_COND)[-1]
-    self.start_idx = self.data.find(SerialMsg.START_COND)
-    return self.start_idx != -1
-
-  def find_end(self) -> bool:
-    if self.start_idx != -1:
-      self.end_idx = self.data.find(SerialMsg.END_COND, self.start_idx + 1)
-      return self.end_idx != -1
-
-    return False
-
-  def parse(self) -> int:
-    self.data_list = self.data[self.start_idx + 1:self.end_idx].split(';')
-    self.type = self.data_list[0]
-    return len(self.data_list)
-
-  def to_dict(self) -> None:
-    if len(self.data_list) >= 5:
-      self.d["state"] = self.data_list[1]
-      self.d["weight"] = float(self.data_list[2]) / 1000.0
-      self.d["current"] = float(self.data_list[3]) / 10.0
-      self.d["voltage"] = float(self.data_list[4]) / 10.0
-      self.d["pwm"] = self.data_list[5]
-
-
-@unique
-class ObsEvent(IntEnum):
-  CONNECTION = auto()
-  DISCONNECTION = auto()
-  NEW_DATA = auto()
-  NEW_PORT = auto()
-  SELECT_PORT = auto()
-  NEW_CMD = auto()
-  UPDATE_SETUP = auto()
-
-
-class Subscriber():
-  def __init__(self) -> None:
-    pass
-
-  def update(self, event: ObsEvent) -> None:
-    pass
-
-
-class Publisher():
-  def __init__(self) -> None:
-    self._subs: List[Subscriber] = []
-
-  def add_subs(self, subscriber: Subscriber) -> None:
-    self._subs.append(subscriber)
-
-  def notify(self, event: ObsEvent) -> None:
-    for s in self._subs:
-      s.update(event)
-
-
-HW_TABLE = {"max_throttle": "MT", "max_pwm": "AP", "min_pwm": "IP"}
+HW_TABLE = {"max_throttle": "MT_", "max_pwm": "AP_", "min_pwm": "IP_"}
 
 
 class HWSetup():
@@ -153,14 +71,14 @@ class Model(Publisher):
   def __init__(self) -> None:
     super().__init__()
     self._label = f"[{self.__class__.__name__}] "
-    self.serial_data: Dict[str, float] = {}
+    self.serial_data: Dict[str, Union[int, float]] = {}
     self.is_client_connected = False
     self.is_port_opened = False
     self.ports: List[ListPortInfo] = []
     self.port: ListPortInfo = ListPortInfo("invalid", True)
     self.baudrate = 115200
     self.cmds: List[CMDS] = []
-    self.hw_setup = HWSetup()
+    self.hw_setup: Dict[str, int] = {}
 
   def connection_port(self, port: ListPortInfo, baudrate: int = 115200) -> None:
     self.port = port
@@ -179,26 +97,28 @@ class Model(Publisher):
         self.ports.extend(new_ports)
         self.notify(ObsEvent.NEW_PORT)
 
-  def set_uart_data(self, data) -> None:
-    self.serial_data = data
-    self.notify(ObsEvent.NEW_DATA)
+  def set_uart_data(self, msg: SerialMsg) -> None:
+    try:
+      data_msg = DataMsg(msg)
+    except:
+      debug_msg(self._label + "Failed to create dict from MSG")
+      return
+
+    if data_msg.to_dict():
+      self.serial_data = data_msg.d
+      self.notify(ObsEvent.NEW_DATA)
+    else:
+      debug_msg(self._label + "Failed to create dict from MSG")
 
   def set_new_cmd(self, cmd: CMDS) -> None:
     debug_msg(self._label + f"New cmd: {cmd}")
     self.cmds.append(cmd)
     self.notify(ObsEvent.NEW_CMD)
 
-  def update_hw_setup(self, hw_setup: HWSetup) -> None:
-    update_count = 0
-    for key, val in hw_setup.to_dict().items():
-      print(key)
-      if self.hw_setup.to_dict()[key] != val:
-        update_count += 1
-        self.hw_setup.to_dict()[key] = val
-
-    if update_count > 0:
-      debug_msg(self._label + "Update params")
-      self.notify(ObsEvent.UPDATE_SETUP)
+  def update_hw_setup(self, data: Dict) -> None:
+    debug_msg(self._label + "Update params")
+    self.hw_setup = data
+    self.notify(ObsEvent.UPDATE_SETUP)
 
 
 class SerialWorker():
@@ -228,8 +148,6 @@ class SerialWorker():
     self.ports = []
     self._is_write_req = False
     self._is_update_req = False
-    self._is_file_open = False
-    self._data_storage = pathlib.Path(DATA_STORAGE)
     self._skip_data_timer = 0
     self._response_timer = 0
 
@@ -259,7 +177,7 @@ class SerialWorker():
         time.sleep(1.0)
       elif self.in_state(FS.CONNECTING):
         if self.model.port.name == "invalid" or self.model.baudrate <= 0:
-          debug_msg("Bad port")
+          debug_msg(self._label + "Bad port")
           self.trs(FS.WAIT)
           continue
 
@@ -276,22 +194,24 @@ class SerialWorker():
 
       elif self.in_state(FS.READ):
         try:
-          if self.serial_port.in_waiting > 4 and self._skip_data_timer < time.monotonic():
+          if self._skip_data_timer > time.monotonic():
+            self.serial_port.read_all()
+            continue
+
+          if self.serial_port.in_waiting > 4:
             self.msg.data = self.serial_port.read_until().decode()
-            print(self.msg.data)
+            # debug_msg(self._label + self.msg.data)
             if self.msg.find_start() and self.msg.find_end() and self.msg.is_data_exist():
               self.trs(FS.PARSE, False)
         except Exception as e:
           print(str(e))
 
       elif self.in_state(FS.PARSE):
-        self.msg.parse()
-
-        if self.msg.type == 'D':
-          self.msg.to_dict()
-          self.model.set_uart_data(self.msg.d)
-        else:
-          debug_msg(self._label + str(self.msg))
+        if self.msg.parse():
+          if self.msg.type == MsgType.DATA:
+            self.model.set_uart_data(self.msg)
+          elif self.msg.type == MsgType.SETUP:
+            debug_msg(self._label + str(self.msg))
 
         self.trs(FS.READ, False)
 
@@ -306,22 +226,20 @@ class SerialWorker():
 
         try:
           self.serial_port.write(str.encode(cmd.value))
+
+          if cmd == CMDS.UPDATE_SETUP:
+            self._is_write_req = False
+            self.trs(FS.WRITE_SETUP)
+
         except:
           debug_msg(self._label + f"Failed to receive command {cmd}")
           self.model.cmds.append(cmd)
 
-      elif self.in_state(FS.WRITE_SETUP):
-
-        hw_str = self.model.hw_setup.to_str()
-        if hw_str == '':
-          debug_msg(self._label + "Invalid value")
-          self._is_update_req = False
-          self.trs(FS.READ)
-          continue
-
+      elif self.in_state(FS.WRITE_SETUP):   
         try:
-          self.serial_port.write(str.encode(self.model.hw_setup.to_msg()))
-          self._is_update_req = False
+          msg = SerialMsg()
+          msg.fill(self.model.hw_setup, MsgType.SETUP)
+          self.serial_port.write(msg.serialize())
           self.trs(FS.WAIT_RESPONSE)
         except:
           debug_msg(self._label + "Failed to receive setup")
@@ -423,7 +341,11 @@ class SocketWorker(Namespace):
   def on_update_setup(self, data) -> None:
     debug_msg(self._label + "New setup")
     debug_msg(self._label + str(data))
-    self.model.update_hw_setup(HWSetup().from_dict(data))
+    msg = SerialMsg()
+    msg.fill(data, MsgType.SETUP)
+    setup_data = SetupMsg(msg)
+    if setup_data.to_dict():
+      self.model.update_hw_setup(setup_data.d)
 
   def update_serial_data(self) -> bool:
     self.emit("update_serial_data", self.model.serial_data)
@@ -477,8 +399,6 @@ class Controller(Subscriber):
 
   def update_data(self, i) -> None:
 
-    self.model.serial_data
-
     if self._update_data_timer < time.monotonic():
       self._update_data_timer = time.monotonic() + UPDATE_UI_DATA_DT
       self.socket.update_serial_data()
@@ -520,11 +440,6 @@ def home() -> str:
 
 
 if __name__ == "__main__":
-
-  if not pathlib.Path(DATA_STORAGE).exists():
-    debug_msg(f"[SYS] Create folder {DATA_STORAGE}")
-    pathlib.Path(DATA_STORAGE).mkdir(parents=True, exist_ok=True)
-
   model = Model()
   sw = SerialWorker(30, model)
   socket_ns = SocketWorker(model, "/")
