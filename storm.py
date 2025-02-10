@@ -1,12 +1,7 @@
 #!/bin/python3
 
-from abc import ABC, abstractmethod
-from collections import OrderedDict
-from ctypes import Structure, c_bool, c_float, c_int
-from dataclasses import asdict, dataclass, fields
-from json import load
-from typing import Any, Callable, Dict, List, Union
-from enum import Enum, IntEnum, auto, unique
+from typing import Any, Callable, Dict, Union
+from enum import IntEnum, auto
 from threading import Event, Thread
 import time
 import serial
@@ -15,21 +10,14 @@ from flask import render_template
 from flask_socketio import Namespace, SocketIO, emit
 import serial.tools
 import serial.tools.list_ports
-from serial.tools.list_ports_common import ListPortInfo
-from modules.observer import ObsEvent, Publisher, Subscriber
+from modules.cmds import CMDS
+from modules.model import Model
+from modules.observer import ObsEvent, Subscriber
 from static_data import Templates
-import pathlib
-from modules.msg import MsgType, SetupMsg, DataMsg, SerialMsg
+from modules.msg import MsgType, SetupMsg, SerialMsg
 
 DEBUG_ENABLED = True
 UPDATE_UI_DATA_DT = 0.25  # задержка обновления данных в интрерфейсе, сек
-
-
-class CMDS(Enum):
-  START_TEST = "101"
-  START_CALIB = "212"
-  STOP_TEST = "254"
-  UPDATE_SETUP = "35"
 
 
 def debug_msg(msg):
@@ -39,86 +27,6 @@ def debug_msg(msg):
 
 
 HW_TABLE = {"max_throttle": "MT_", "max_pwm": "AP_", "min_pwm": "IP_"}
-
-
-class HWSetup():
-  def __init__(self, max_pwm: int = 2000, min_pwm: int = 1000):
-    self.param = OrderedDict()
-    self.param.setdefault("max_pwm", max_pwm)
-    self.param.setdefault("min_pwm", min_pwm)
-    self.param.setdefault("max_throttle", max_pwm - min_pwm)
-
-  def __str__(self):
-    return str(self.param)
-
-  @staticmethod
-  def from_dict(dict: Dict) -> 'HWSetup':
-    hw = HWSetup()
-    hw.param.update(dict)
-    return hw
-
-  def to_dict(self) -> Dict[str, int]:
-    return self.param
-
-  def to_str(self) -> str:
-    return ';'.join([' '.join((HW_TABLE[k], str(v))) for k, v in self.to_dict().items()])
-
-  def to_msg(self) -> str:
-    SerialMsg.START_COND + self.to_str() + SerialMsg.END_COND
-
-
-class Model(Publisher):
-  def __init__(self) -> None:
-    super().__init__()
-    self._label = f"[{self.__class__.__name__}] "
-    self.serial_data: Dict[str, Union[int, float]] = {}
-    self.is_client_connected = False
-    self.is_port_opened = False
-    self.ports: List[ListPortInfo] = []
-    self.port: ListPortInfo = ListPortInfo("invalid", True)
-    self.baudrate = 115200
-    self.cmds: List[CMDS] = []
-    self.hw_setup: Dict[str, int] = {}
-
-  def connection_port(self, port: ListPortInfo, baudrate: int = 115200) -> None:
-    self.port = port
-    self.baudrate = baudrate
-
-  def set_ports_list(self, port: Union[List, ListPortInfo]) -> None:
-    # TODO: использовать множество "set"
-
-    if isinstance(port, ListPortInfo):
-      if port not in self.ports:
-        self.ports.append(port)
-        self.notify(ObsEvent.NEW_PORT)
-    elif isinstance(port, List):
-      new_ports = [p for p in port if p not in self.ports]
-      if len(new_ports) != 0:
-        self.ports.extend(new_ports)
-        self.notify(ObsEvent.NEW_PORT)
-
-  def set_uart_data(self, msg: SerialMsg) -> None:
-    try:
-      data_msg = DataMsg(msg)
-    except:
-      debug_msg(self._label + "Failed to create dict from MSG")
-      return
-
-    if data_msg.to_dict():
-      self.serial_data = data_msg.d
-      self.notify(ObsEvent.NEW_DATA)
-    else:
-      debug_msg(self._label + "Failed to create dict from MSG")
-
-  def set_new_cmd(self, cmd: CMDS) -> None:
-    debug_msg(self._label + f"New cmd: {cmd}")
-    self.cmds.append(cmd)
-    self.notify(ObsEvent.NEW_CMD)
-
-  def update_hw_setup(self, data: Dict) -> None:
-    debug_msg(self._label + "Update params")
-    self.hw_setup = data
-    self.notify(ObsEvent.UPDATE_SETUP)
 
 
 class SerialWorker():
@@ -235,7 +143,7 @@ class SerialWorker():
           debug_msg(self._label + f"Failed to receive command {cmd}")
           self.model.cmds.append(cmd)
 
-      elif self.in_state(FS.WRITE_SETUP):   
+      elif self.in_state(FS.WRITE_SETUP):
         try:
           msg = SerialMsg()
           msg.fill(self.model.hw_setup, MsgType.SETUP)
