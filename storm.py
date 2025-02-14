@@ -36,7 +36,7 @@ class SerialWorker():
     CONNECTING = auto()
     READ = auto()
     PARSE = auto()
-    WRITE_CMD = auto()
+    WRITE = auto()
     WRITE_SETUP = auto()
     WAIT_RESPONSE = auto()
     CLOSE = auto()
@@ -108,7 +108,7 @@ class SerialWorker():
 
           if self.serial_port.in_waiting > 4:
             self.msg.data = self.serial_port.read_until().decode()
-            # debug_msg(self._label + self.msg.data)
+            debug_msg(self._label + self.msg.data)
             if self.msg.find_start() and self.msg.find_end() and self.msg.is_data_exist():
               self.trs(FS.PARSE, False)
         except Exception as e:
@@ -123,7 +123,7 @@ class SerialWorker():
 
         self.trs(FS.READ, False)
 
-      elif self.in_state(FS.WRITE_CMD):
+      elif self.in_state(FS.WRITE):
         debug_msg(self._label + str(self.model.cmds))
         if len(self.model.cmds) == 0:
           self._is_write_req = False
@@ -131,14 +131,11 @@ class SerialWorker():
           continue
 
         cmd = self.model.cmds.pop()
+        msg = SerialMsg(15)
+        debug_msg(self._label + str(msg.serialize({"CMD": cmd.value}, MsgType.CMD)))
 
         try:
-          self.serial_port.write(str.encode(cmd.value))
-
-          if cmd == CMDS.UPDATE_SETUP:
-            self._is_write_req = False
-            self.trs(FS.WRITE_SETUP)
-
+          self.serial_port.write(msg.serialize({"CMD": cmd.value}, MsgType.CMD))
         except:
           debug_msg(self._label + f"Failed to receive command {cmd}")
           self.model.cmds.append(cmd)
@@ -181,10 +178,7 @@ class SerialWorker():
           pass
 
       if self._is_write_req:
-        self.trs(FS.WRITE_CMD)
-        continue
-      elif self._is_update_req:
-        self.trs(FS.WRITE_SETUP)
+        self.trs(FS.WRITE)
         continue
 
       time.sleep(self._rate)

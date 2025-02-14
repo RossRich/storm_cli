@@ -1,10 +1,12 @@
 import enum
-from typing import Any, Dict, Union
+from typing import Dict, Union
 
 
 class MsgType(str, enum.Enum):
   DATA = "D"
-  SETUP = "C"
+  SETUP = "S"
+  CMD = "C"
+  DEBUG = "*"
   INV = "INV"
 
 
@@ -61,7 +63,7 @@ class SerialMsg():
     self.data_list.extend([v for _, v in data.items()])
     self.type = msg_type
 
-  def serialize(self, data, msg_type) -> bytes:
+  def serialize(self, data: Dict[str, Union[float, int]], msg_type: MsgType) -> bytes:
     self.fill(data, msg_type)
     return (SerialMsg.START_COND + ';'.join(self.data_list) + SerialMsg.END_COND).encode()
 
