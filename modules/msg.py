@@ -16,7 +16,7 @@ class SerialMsg():
   DIV_CHAR = ';'
 
   def __init__(self, data_len: int = 35):
-    self.data = 'x' * data_len
+    self.buffer = 'x' * data_len
     self.start_idx = -1
     self.end_idx = -1
     self.data_list = []
@@ -33,13 +33,13 @@ class SerialMsg():
     return self.start_idx != -1 and self.end_idx != -1 and self.end_idx > self.start_idx
 
   def find_start(self) -> bool:
-    self.data = SerialMsg.START_COND + self.data.split(SerialMsg.START_COND)[-1]
-    self.start_idx = self.data.find(SerialMsg.START_COND)
+    self.buffer = SerialMsg.START_COND + self.buffer.split(SerialMsg.START_COND)[-1]
+    self.start_idx = self.buffer.find(SerialMsg.START_COND)
     return self.start_idx != -1
 
   def find_end(self) -> bool:
     if self.start_idx != -1:
-      self.end_idx = self.data.find(SerialMsg.END_COND, self.start_idx + 1)
+      self.end_idx = self.buffer.find(SerialMsg.END_COND, self.start_idx + 1)
       return self.end_idx != -1
 
     return False
@@ -48,7 +48,7 @@ class SerialMsg():
     if not self.is_data_exist():
       return 0
 
-    self.data_list = self.data[self.start_idx + 1:self.end_idx].split(SerialMsg.DIV_CHAR)
+    self.data_list = self.buffer[self.start_idx + 1:self.end_idx].split(SerialMsg.DIV_CHAR)
 
     try:
       self.type = MsgType(self.data_list[0])
@@ -60,7 +60,7 @@ class SerialMsg():
 
   def fill(self, data: Dict[str, Union[float, int]], msg_type: MsgType) -> None:
     self.data_list = [msg_type.value]
-    self.data_list.extend([v for _, v in data.items()])
+    self.data_list.extend([str(v) for _, v in data.items()])
     self.type = msg_type
 
   def serialize(self, data: Dict[str, Union[float, int]], msg_type: MsgType) -> bytes:
@@ -69,48 +69,46 @@ class SerialMsg():
 
 
 class DataMsg():
-  def __init__(self, serial_msg: SerialMsg):
+  H = ("state", "weight", "current", "voltage", "pwm")
 
+  def __init__(self, serial_msg: SerialMsg):
     if serial_msg.type != MsgType.DATA:
       raise RuntimeError("Invalid message type")
 
     self.msg = serial_msg
-    self.d = {"state": 0, "weight": 0.0, "current": 0.0, "voltage": 0.0, "pwm": 0}
+    self.d: Dict = {}
 
   def to_dict(self) -> bool:
     if len(self.msg.data_list) < 5:
       return False
 
     # индекс 0 для типа сообщения
-    _index = 1
-    self.d["state"] = self.msg.data_list[_index]
-    _index += 1
-    self.d["weight"] = float(self.msg.data_list[_index]) / 1000.0
-    _index += 1
-    self.d["current"] = float(self.msg.data_list[_index]) / 10.0
-    _index += 1
-    self.d["voltage"] = float(self.msg.data_list[_index]) / 10.0
-    _index += 1
-    self.d["pwm"] = self.msg.data_list[_index]
+    for i, h in enumerate(DataMsg.H):
+      self.d[h] = self.msg.data_list[i + 1]
+
+    self.d["weight"] = float(self.d["weight"]) / 1000.0
+    self.d["current"] = float(self.d["current"]) / 10.0
+    self.d["voltage"] = float(self.d["voltage"]) / 10.0
+
     return True
 
 
 class SetupMsg():
-  def __init__(self, serial_msg: SerialMsg):
+  H = ("id", "max_throttle", "max_pwm", "min_pwm")
 
+  def __init__(self, serial_msg: SerialMsg):
     if serial_msg.type != MsgType.SETUP:
       raise RuntimeError("Invalid message type")
 
     self.msg = serial_msg
-    self.d = {"max_throttle": 0, "max_pwm": 0, "min_pwm": 0}
+    self.d: Dict = {}
 
   def to_dict(self) -> bool:
     if len(self.msg.data_list) < 3:
       return False
 
     # индекс 0 для типа сообщения
-    h = ("max_throttle", "max_pwm", "min_pwm")
-    for i, h in enumerate(h):
+    for i, h in enumerate(SetupMsg.H):
       self.d[h] = self.msg.data_list[i + 1]
 
     return True
