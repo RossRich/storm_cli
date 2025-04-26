@@ -1,7 +1,7 @@
-from typing import Dict, List
-from .msg import DataMsg, SetupMsg
+from typing import List
+from .msg import DataMsg, MsgType, SerialMsg, SetupMsg
 from .socket_worker import ViewClickEvent, ViewData, ViewEvent
-from .serial_worker import SerialListener, SerialWorker
+from .serial_worker import SerialCmd, SerialListener, SerialWorker
 from .view import View, ViewListener
 from .model import Model
 
@@ -9,6 +9,7 @@ from .model import Model
 class Presenter(SerialListener, ViewListener):
   def __init__(self, view: View, model: Model, serial_worker: SerialWorker):
     super().__init__()
+    self._label = f"[{self.__class__.__name__}] "
 
     self._model = model
     self._view = view
@@ -17,19 +18,34 @@ class Presenter(SerialListener, ViewListener):
     self.serial_worker = serial_worker
     self.serial_worker.set_listener(self)
 
+    self.verbose = False
+
+  def log(self, msg: str) -> None:
+    if self.verbose:
+      print(self._label + msg)
+
   # socket section ------>
 
   def on_click_event(self, e: ViewClickEvent):
-    '''
-    socket_view
-    '''
     super().on_click_event(e)
 
+    self.log(e.name)
+
+    if e == ViewClickEvent.STOP_TEST:
+      self.stop_test()
+    elif e == ViewClickEvent.START_TEST:
+      self.start_test()
+    elif e == ViewClickEvent.SETUP_ESC:
+      self.setup_esc()
+    elif e == ViewClickEvent.UPDATE_CONFIG:
+      self.update_setup()
+    else:
+      pass
+
   def on_event(self, e: ViewEvent):
-    '''
-    socket_view
-    '''
     super().on_event(e)
+
+    self.log(e.name)
 
     if e == ViewEvent.ON_CONNECTION:
       self._model.is_client_connected = True
@@ -40,8 +56,8 @@ class Presenter(SerialListener, ViewListener):
 
   def on_update_conf(self, vd: ViewData) -> None:
     super().on_update_conf(vd)
-    print(vd)
-    # здесь принимать тип сообщения с параметрами (скорее всего словарь)
+    
+
 
   def on_select_device(self, dev: str) -> None:
     super().on_select_device(dev)
@@ -59,23 +75,14 @@ class Presenter(SerialListener, ViewListener):
   # serial section ------>
 
   def on_new_conf(self, cfg: SetupMsg):
-    '''
-    serial cb'
-    '''
-
     super().on_new_conf(cfg)
     self._model.cfg = cfg
     self._view.send_cfg(self._model.cfg)
 
   def on_new_measurements(self, data: DataMsg) -> None:
-    '''
-    serial cb
-    '''
-
     super().on_new_measurements(data)
-    # self._model.set_uart_data(data)
     self._model.serial_data = data
-    self._update_ui()
+    self.update_ui()
 
   def on_new_device(self, dev_list: List[str]):
     super().on_new_device(dev_list)
@@ -84,9 +91,19 @@ class Presenter(SerialListener, ViewListener):
       self._model.devices = dev_list
       self.device_to_view()
 
+  def on_open(self):
+    super().on_open()
+    self.log("Serial port opened")
+    self._model.is_port_opened = True
+
+  def on_close(self):
+    super().on_close()
+    self.log("Serial port closed")
+    self._model.is_port_opened = False
+
   # presenter section ------>
 
-  def _update_ui(self) -> None:
+  def update_ui(self) -> None:
     if self._model.serial_data:
       self._view.send_measurements(self._model.serial_data)
 
@@ -96,3 +113,27 @@ class Presenter(SerialListener, ViewListener):
   def connect_to_device(self) -> None:
     if self._model.device in self._model.devices:
       self.serial_worker.connect(self._model.device)
+
+  def start_test(self) -> None:
+    if self._model.is_port_opened:
+      sm = SerialMsg(10)
+      sm.fill({"cmd": SerialCmd.START_TEST.value}, MsgType.CMD)
+      self.serial_worker.send_cmd(sm)
+
+  def stop_test(self) -> None:
+    if self._model.is_port_opened:
+      sm = SerialMsg(10)
+      sm.fill({"cmd": SerialCmd.STOP_TEST.value}, MsgType.CMD)
+      self.serial_worker.send_cmd(sm)
+
+  def setup_esc(self) -> None:
+    if self._model.is_port_opened:
+      sm = SerialMsg(10)
+      sm.fill({"cmd": SerialCmd.SETUP_ESC.value}, MsgType.CMD)
+      self.serial_worker.send_cmd(sm)
+
+  def update_setup(self) -> None:
+    if self._model.is_port_opened:
+      sm = SerialMsg(10)
+      sm.fill({"cmd": SerialCmd.UPDATE_SETUP.value}, MsgType.CMD)
+      self.serial_worker.send_cmd(sm)

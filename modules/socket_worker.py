@@ -11,11 +11,11 @@ class ViewEvent(IntEnum):
   ON_DISCONNECTION = auto()
 
 
-@unique
 class ViewClickEvent(IntEnum):
-  START_TEST = auto()
-  STOP_TEST = auto()
-  SETUP_ESC = auto()
+  START_TEST = 10
+  STOP_TEST = 11
+  SETUP_ESC = 12
+  UPDATE_CONFIG = 14
 
 
 class SocketListener(ABC):
@@ -84,8 +84,21 @@ class SocketView(Namespace, IView):
 
     return True
 
-  def on_new_cmd(self, data) -> None:
-    self.click_listener.on_click_event(ViewClickEvent.START_TEST)
+  def on_new_cmd(self, data: Dict[str, Any]) -> bool:
+    if not data:
+      return False
+
+    try:
+      if "cmd" not in data.keys():
+        raise ValueError()
+
+      cmd = ViewClickEvent(data["cmd"])
+      self.click_listener.on_click_event(cmd)
+    except Exception as e:
+      print(self._label + str(e))
+      return False
+
+    return True
 
   def set_measurements(self, data: ViewData):
     super().set_measurements(data)
