@@ -29,9 +29,10 @@ if __name__ == "__main__":
   socket_ns = SocketView("/")
   view = View(socket_ns)
   socketio.on_namespace(socket_ns)
-  sw = SerialWorker(20)
-  sw.verbose = True
+  sw = SerialWorker(120)
+  sw.verbose = False
   presenter = Presenter(view, model, sw)
+  presenter.verbose = True
   sw.begin()
   app.run(debug=True)
   sw.end()

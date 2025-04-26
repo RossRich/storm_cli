@@ -1,4 +1,5 @@
 from typing import List
+from .iview import ViewDataSrc
 from .msg import DataMsg, MsgType, SerialMsg, SetupMsg
 from .socket_worker import ViewClickEvent, ViewData, ViewEvent
 from .serial_worker import SerialCmd, SerialListener, SerialWorker
@@ -37,8 +38,8 @@ class Presenter(SerialListener, ViewListener):
       self.start_test()
     elif e == ViewClickEvent.SETUP_ESC:
       self.setup_esc()
-    elif e == ViewClickEvent.UPDATE_CONFIG:
-      self.update_setup()
+    elif e == ViewClickEvent.GET_SETUP:
+      self.get_setup()
     else:
       pass
 
@@ -56,8 +57,10 @@ class Presenter(SerialListener, ViewListener):
 
   def on_update_conf(self, vd: ViewData) -> None:
     super().on_update_conf(vd)
-    
-
+    if self._model.is_port_opened and vd.src == ViewDataSrc.CONFIGURATION:
+      self._model.cfg = {"id": self._model.setup_id} | vd.data
+      self._model.setup_id += 1
+      self.setup_device()
 
   def on_select_device(self, dev: str) -> None:
     super().on_select_device(dev)
@@ -95,6 +98,7 @@ class Presenter(SerialListener, ViewListener):
     super().on_open()
     self.log("Serial port opened")
     self._model.is_port_opened = True
+    self.get_setup()
 
   def on_close(self):
     super().on_close()
@@ -114,26 +118,32 @@ class Presenter(SerialListener, ViewListener):
     if self._model.device in self._model.devices:
       self.serial_worker.connect(self._model.device)
 
+  def setup_device(self) -> None:
+    if self._model.cfg:
+      sm = SerialMsg()
+      sm.fill(self._model.cfg, MsgType.SETUP)
+      self.serial_worker.write(sm)
+
   def start_test(self) -> None:
     if self._model.is_port_opened:
       sm = SerialMsg(10)
       sm.fill({"cmd": SerialCmd.START_TEST.value}, MsgType.CMD)
-      self.serial_worker.send_cmd(sm)
+      self.serial_worker.write(sm)
 
   def stop_test(self) -> None:
     if self._model.is_port_opened:
       sm = SerialMsg(10)
       sm.fill({"cmd": SerialCmd.STOP_TEST.value}, MsgType.CMD)
-      self.serial_worker.send_cmd(sm)
+      self.serial_worker.write(sm)
 
   def setup_esc(self) -> None:
     if self._model.is_port_opened:
       sm = SerialMsg(10)
       sm.fill({"cmd": SerialCmd.SETUP_ESC.value}, MsgType.CMD)
-      self.serial_worker.send_cmd(sm)
+      self.serial_worker.write(sm)
 
-  def update_setup(self) -> None:
+  def get_setup(self) -> None:
     if self._model.is_port_opened:
       sm = SerialMsg(10)
-      sm.fill({"cmd": SerialCmd.UPDATE_SETUP.value}, MsgType.CMD)
-      self.serial_worker.send_cmd(sm)
+      sm.fill({"cmd": SerialCmd.GET_SETUP.value}, MsgType.CMD)
+      self.serial_worker.write(sm)

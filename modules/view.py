@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Union
+from typing import Any, List, Union
 from .msg import DataMsg, SetupMsg
 from .iview import IView, ViewData, ViewDataSrc
 from .socket_worker import ViewEvent, SocketListener, SocketView

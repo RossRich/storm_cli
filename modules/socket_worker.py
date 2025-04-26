@@ -10,12 +10,12 @@ class ViewEvent(IntEnum):
   ON_CONNECTION = auto()
   ON_DISCONNECTION = auto()
 
-
+@unique
 class ViewClickEvent(IntEnum):
   START_TEST = 10
   STOP_TEST = 11
   SETUP_ESC = 12
-  UPDATE_CONFIG = 14
+  GET_SETUP = 14
 
 
 class SocketListener(ABC):

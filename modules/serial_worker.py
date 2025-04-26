@@ -18,7 +18,7 @@ class SerialCmd(Enum):
   START_TEST = 101
   SETUP_ESC = 212
   STOP_TEST = 254
-  UPDATE_SETUP = 35
+  GET_SETUP = 30
 
 
 class SerialListener(ABC):
@@ -53,7 +53,8 @@ class SerialObject(ABC):
     '''
     self.listeners = listener
 
-  def send_cmd(self, msg: SerialMsg) -> None:
+  @abstractmethod
+  def write(self, msg: SerialMsg) -> None:
     pass
 
   def new_data(self, data: SerialMsg) -> None:
@@ -110,9 +111,10 @@ class SerialWorker(SerialObject):
 
     self.verbose = False
 
-  def send_cmd(self, msg: SerialMsg) -> None:
-    super().send_cmd(msg)
+  def write(self, msg: SerialMsg) -> None:
+    super().write(msg)
     if self._serial_connection.is_open and not self._is_write_req:
+      print(msg)
       self._write_data = msg
       self._is_write_req = True
 
@@ -160,8 +162,6 @@ class SerialWorker(SerialObject):
           self._serial_connection.port = self._serial_device
           self._serial_connection.open()
           self._skip_data_timer = time.monotonic() + 3
-          if self.listeners:
-            self.listeners.on_open()
           self.fsm_trs(FS.PORT_CLEANING)
         except Exception as e:
           self.log("Error: " + str(e))
@@ -170,6 +170,8 @@ class SerialWorker(SerialObject):
       elif self.fsm_in_state(FS.PORT_CLEANING):
         self._serial_connection.read_all()
         if time.monotonic() > self._skip_data_timer:
+          if self.listeners:
+            self.listeners.on_open()
           self.fsm_trs(FS.READ)
 
       elif self.fsm_in_state(FS.READ):
