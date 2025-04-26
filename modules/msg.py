@@ -63,8 +63,7 @@ class SerialMsg():
     self.data_list.extend([str(v) for _, v in data.items()])
     self.type = msg_type
 
-  def serialize(self, data: Dict[str, Union[float, int]], msg_type: MsgType) -> bytes:
-    self.fill(data, msg_type)
+  def serialize(self) -> bytes:
     return (SerialMsg.START_COND + ';'.join(self.data_list) + SerialMsg.END_COND).encode()
 
 
