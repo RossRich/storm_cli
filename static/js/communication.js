@@ -5,6 +5,18 @@
   C.socket_io = socket_io
 })(io());
 
+let VIEW_DATA_SRC = {
+  UPDATE_CONF: 0,
+  SELECT_DEVICE: 1
+};
+
+let SYSTEM_CMD = {
+  START_TEST: 10,
+  STOP_TEST: 11,
+  SETUP_ESC: 12,
+  GET_CONFIG: 14
+};
+
 function build_param_chart(element_id) {
   return new Chart($("#" + element_id), {
     type: "doughnut",
@@ -26,7 +38,7 @@ function build_param_chart(element_id) {
       }
     }
   })
-}
+};
 
 const chart_default_data = {
   labels: [0],
@@ -56,7 +68,7 @@ const chart_default_data = {
   ],
 };
 
-function build_mian_chart() {
+function get_mian_chart() {
   return new Chart($("#main_chart"), {
     type: 'line',
     data: structuredClone(chart_default_data),
@@ -70,15 +82,23 @@ function build_mian_chart() {
       }
     }
   });
-}
-
-
-let OnConnect = function () {
-  M.toast({ html: '<i class=\'material-icons\'>check</i> Сервер доступен' })
 };
 
-let OnDisconnect = function () {
-  M.toast({ html: '<i class=\'material-icons\'>close</i> Связь с сервер потерена' })
+
+let OnConnectToast = function () {
+  M.toast({ html: '<i class=\'material-icons\'>desktop_windows</i> Сервер активен' });
+};
+
+let OnDisconnectToast = function () {
+  M.toast({ html: '<i class=\'material-icons\'>close</i> Связь с сервером потеряна' });
+};
+
+let OnNewPortToast = function () {
+  M.toast({ html: '<i class=\'material-icons\'>usb</i> Найдено новое устройство' });
+};
+
+let OnNewCfgToast = function () {
+  M.toast({ html: '<i class=\'material-icons\'>settings</i> Новые параметры приняты' });
 };
 
 let kp_val = 0.0;
@@ -89,17 +109,18 @@ const HW_RUN_TEST = 4;
 const HW_CALIB = 6;
 const HW_STOPING_WORK = 7;
 
-let OnDataReceived = function (serial_data) {
-  if (C.data_list.length > 100) {
-    C.data_list.shift();
-  }
-  C.data_list.push(serial_data);
+let OnNewMeasurements = function (context, measurements) {
+  // let serial_data = serial_data_t.data;
+  // if (C.data_list.length > 100) {
+  // C.data_list.shift();
+  // }
+  // C.data_list.push(serial_data);
 
-  C.hw_status = parseInt(serial_data["state"]);
-  let voltage_val = serial_data["voltage"];
-  let current_val = serial_data["current"];
-  let weight_val = serial_data["weight"];
-  let throttle_val = serial_data["pwm"];
+  C.hw_status = parseInt(measurements["state"]);
+  let voltage_val = measurements["voltage"];
+  let current_val = measurements["current"];
+  let weight_val = measurements["weight"];
+  let throttle_val = measurements["pwm"];
   // let kp_val = 0.0;
   if (parseFloat(weight_val) > 0.1) {
     kp_val = (kp_val * filter_gain) + ((1 - filter_gain) * (parseFloat(weight_val) / (parseFloat(current_val) * parseFloat(voltage_val))));
@@ -124,23 +145,23 @@ let OnDataReceived = function (serial_data) {
     C.main_chart.update();
   }
 
-  if (Object.keys(C.digits).length > 0) {
-    Object.keys(C.digits).forEach((key) => {
+  if (Object.keys(C.value_fields).length > 0) {
+    Object.keys(C.value_fields).forEach((key) => {
       if (key == "voltage") {
-        C.digits[key].text(voltage_val.toString());
+        C.value_fields[key].text(voltage_val.toString());
       } else if (key == "current") {
-        C.digits[key].text(current_val.toString());
+        C.value_fields[key].text(current_val.toString());
       } else if (key == "weight") {
-        C.digits[key].text(weight_val.toString());
+        C.value_fields[key].text(weight_val.toString());
       } else if (key == "throttle") {
-        C.digits[key].text(throttle_val.toString());
+        C.value_fields[key].text(throttle_val.toString());
       } else if (key == "performance") {
-        C.digits[key].text(kp_val.toString());
+        C.value_fields[key].text(kp_val.toString());
       }
     });
   }
 
-  console.log(serial_data);
+  // console.log(serial_data);
 };
 
 let OnNewPort = function (context, ports_obj) {
@@ -153,17 +174,19 @@ let OnNewPort = function (context, ports_obj) {
   }
 
   selector_id = $(context.port_selector.el);
-  selector_id.find("option").not(":disabled").empty();
+  selector_id.find("option").not(":disabled").remove();
   ports_obj.forEach((port, index) => {
-    $("<option \>", { value: index, text: port.value, arr_index: port.index }).appendTo(selector_id);
+    $("<option \>", { value: port.name, text: port.name }).appendTo(selector_id);
   });
   context.port_selector.destroy();
   M.FormSelect.init(selector_id, { classes: "port_selector_wrapper" });
   context.port_selector = M.FormSelect.getInstance(selector_id);
   context.ports_list = ports_obj
+
+  OnNewPortToast();
 };
 
-let FindDigits = function () {
+let get_value_fields = function () {
   let panels = $(".digits-panel");
 
   if (panels == undefined || panels.length == 0) {
@@ -184,12 +207,12 @@ let OnStartTest = function (event) {
   let context = event.data.context;
   if (context.socket_io.active && context.hw_status == HW_IDLE) {
     console.log("start test");
-    event.data.context.socket_io.emit("new_cmd", { cmd: "101" });
-    if (event.data.context.main_chart.data.labels.length > 10) {
-      event.data.context.session.push(structuredClone(event.data.context.main_chart.data));
+    context.socket_io.emit("new_cmd", { cmd: SYSTEM_CMD.START_TEST });
+    if (context.main_chart.data.labels.length > 10) {
+      context.session.push(structuredClone(context.main_chart.data));
     }
-    event.data.context.main_chart.data = structuredClone(chart_default_data);
-    event.data.context.main_chart.update();
+    context.main_chart.data = structuredClone(chart_default_data);
+    context.main_chart.update();
   }
 };
 
@@ -197,60 +220,97 @@ let OnStopTest = function (event) {
   let context = event.data.context;
   if (context.socket_io.active) {
     console.log("stop test");
-    event.data.context.socket_io.emit("new_cmd", { cmd: "254" });
+    event.data.context.socket_io.emit("new_cmd", { cmd: SYSTEM_CMD.STOP_TEST });
   }
 };
 
-let OnStartCalibration = function (event) {
+let OnSetupEsc = function (event) {
   let context = event.data.context;
   if (context.socket_io.active && context.hw_status == HW_IDLE) {
     console.log("start calib");
-    event.data.context.socket_io.emit("new_cmd", { cmd: "212" });
+    event.data.context.socket_io.emit("new_cmd", { cmd: SYSTEM_CMD.SETUP_ESC });
   }
 };
 
-let OnUpdateHWSetup = function (event) {
-  console.log("Update HW setup");
+let OnUpdateConfig = function (event) {
   let context = event.data.context;
-  context.socket_io.emit("update_setup", context.setup);
-  console.log(context.setup);
-  // if (context.socket_io.active && context.hw_status == HW_IDLE) {
-  // }
-}
+  console.log(context.configuration);
+  if (context.socket_io.active) {
+    let data = { src: VIEW_DATA_SRC.UPDATE_CONF, data: context.configuration };
+    context.socket_io.emit("submit", data);
+  }
+};
 
 let OnSetMaxThrottle = function (event) {
   let context = event.data.context;
-  let max_throttle_percentage = parseFloat($(this).val()) / 100.0;
-  context.setup.max_throttle = Math.fround((context.setup.max_pwm - context.setup.min_pwm) * max_throttle_percentage)
-  console.log("Max throttle: " + context.setup.max_throttle);
-  $(context).trigger("on_new_setup");
-}
+  let cfg = context.configuration;
+  cfg.max_throttle = $(this).val();
+  const ti = Math.trunc(100.0 / (cfg.max_pwm - cfg.min_pwm) * cfg.max_throttle);
+  context.conf_fields.throttle_info.text(ti.toString());
+  $(context).trigger("update_configuration");
+};
+
+let OnNewConf = function (context, conf) {
+  let cfg = context.configuration;
+  cfg.max_throttle = conf.max_throttle;
+  cfg.max_pwm = conf.max_pwm;
+  cfg.min_pwm = conf.min_pwm;
+
+  context.conf_fields.max_throttle.val(cfg.max_throttle);
+  const ti = Math.trunc(100.0 / (cfg.max_pwm - cfg.min_pwm) * cfg.max_throttle);
+  context.conf_fields.throttle_info.text(ti.toString());
+  OnNewCfgToast();
+};
 
 let create_session_obj = function () {
   return { time: Date(), is_notified: false };
-}
+};
+
+let get_conf_fields = function () {
+  let panel = $("div.action_panel").find("div#conf-panel");
+  if (panel.length == 0) {
+    return {};
+  }
+
+  let max_pwm = $(panel).find("#conf_max_pwm");
+  let min_pwm = $(panel).find("#conf_min_pwm");
+  let max_throttle = $(panel).find("#conf_max_throttle");
+  let throttle_info = $(panel).find("#max_throttle_info")
+
+  return { max_pwm: max_pwm, min_pwm: min_pwm, max_throttle: max_throttle, throttle_info: throttle_info };
+};
 
 C.AutoInit = function () {
   this.ports_list = []
   this.data_list = []
   this.session = []
-  this.setup = { max_throttle: 0, max_pwm: 2000, min_pwm: 1000 }
+  this.configuration = { max_throttle: 950, max_pwm: 2000, min_pwm: 1000 }
   this.port_selector = M.FormSelect.getInstance($("select#port_selector"));
   this.port_modal = M.Modal.getInstance($(".modal#select_port_modal"));
-  this.main_chart = build_mian_chart();
-  this.digits = FindDigits();
-  this.start_test_btn = $(".action_panel").find("a#start_test").first();
-  this.stop_test_btn = $(".action_panel").find("a#stop_test").first();
-  this.set_max_throttle_range = $(".action_panel").find("input#max_throttle").first();
-  this.start_calibration_btn = $("a#start_calibration").first();
+  this.main_chart = get_mian_chart();
+  this.value_fields = get_value_fields();
+  this.conf_fields = get_conf_fields();
+  this.start_test_btn = $(".action_panel").find("a#start_test");
+  this.stop_test_btn = $(".action_panel").find("a#stop_test");
+  this.start_calibration_btn = $("a#start_calibration");
   this.hw_status = HW_INIT;
   this.session_obj = create_session_obj();
+
   if (this.port_modal.$el.has("a#action_end").length > 0) {
-    this.port_modal.$el.find("a#action_end").first().on("click", function () {
+    this.port_modal.$el.find("a#action_end").on("click", function () {
       if (C.socket_io.connected) {
         selector_options = $(C.port_modal.el).find(".port_selector_wrapper > * > .selected").not(".disabled");
         if (selector_options.length > 0) {
-          C.socket_io.emit("select_port", { name: $(selector_options).first().text().toString() });
+          let data = {
+            src: VIEW_DATA_SRC.SELECT_DEVICE,
+            data: {
+              name: $(selector_options).first().text().toString(),
+            }
+          };
+          C.socket_io.emit("submit", data, (response) => {
+            console.log(response)
+            console.log("select dev response");
+          });
         }
       } else {
         console.log("Not connected");
@@ -258,14 +318,21 @@ C.AutoInit = function () {
     })
   }
 
-  this.socket_io.on("connect", OnConnect);
-  this.socket_io.on("disconnect", OnDisconnect);
-  this.socket_io.on("new_port", (ports_list) => {
-    OnNewPort(C, ports_list);
+  this.socket_io.on("connect", OnConnectToast);
+  this.socket_io.on("disconnect", OnDisconnectToast);
+  this.socket_io.on("new_devices", (ports_list) => {
+    OnNewPort(this, ports_list);
   });
-  this.socket_io.on("update_serial_data", OnDataReceived);
 
-  $(this).on("on_new_setup", { context: this }, OnUpdateHWSetup);
+  this.socket_io.on("new_configuration", (conf) => {
+    OnNewConf(this, conf);
+  });
+
+  this.socket_io.on("new_measurements", (measurements) => {
+    OnNewMeasurements(this, measurements);
+  });
+
+  $(this).on("update_configuration", { context: this }, OnUpdateConfig);
 
   if (this.start_test_btn != undefined) {
     this.start_test_btn.click({ context: this }, OnStartTest);
@@ -276,12 +343,13 @@ C.AutoInit = function () {
   }
 
   if (this.start_calibration_btn != undefined) {
-    this.start_calibration_btn.click({ context: this }, OnStartCalibration);
+    this.start_calibration_btn.click({ context: this }, OnSetupEsc);
   }
 
-  if (this.set_max_throttle_range != undefined) {
-    this.set_max_throttle_range.mouseup({ context: this }, OnSetMaxThrottle);
+  if (this.conf_fields.max_throttle != undefined) {
+    this.conf_fields.max_throttle.mouseup({ context: this }, OnSetMaxThrottle);
   }
+
 };
 
 C.AutoInit();
