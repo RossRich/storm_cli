@@ -38,26 +38,55 @@
     </div>
   </div>
   <div class="col s12 xl4">
-    <div class="card-panel hoverable action_panel">
-      <h4>Управление</h4>
-      <div class="section">
-        <h5>Настройка</h5>
-        <section>
-          <span>Максимальный газ</span>
-          <p class="range-field">
-            <input type="range" id="max_throttle" min="0" max="100" value="0"/>
-          </p>
-        </section>
+    <div class="card hoverable action_panel medium">
+      <div class="card-content">
+        <span class="card-title">Панель управления</span>
       </div>
-      <div class="section">
-        <h5>Тестирование</h5>
-        <div class="section">
-          <a class="waves-effect waves-light btn" id="start_test">Начать</a>
+      <div class="card-tabs">
+        <ul class="tabs">
+          <li class="tab"><a class="teal-text" href="#manual_ctrl_tab"><i class="material-icons">pan_tool</i></a></li>
+          <li class="tab"><a class="teal-text" href="#test_ctrl_tab"><i class="material-icons">equalizer</i></a></li>
+          <li class="tab"><a class="teal-text active" href="#setup_ctrl_tab"><i class="material-icons">settings</i></a>
+          </li>
+        </ul>
+      </div>
+      <div class="card-content">
+        <div id="manual_ctrl_tab">
+          <p><i class="material-icons">info_outline</i> Используй клавишу 'S' для немедленной остановки</p>
+            <p class="range-field">
+              <input type="range" id="throttle" min="0" max="100" value="0" />
+            </p>
+            <button class="btn">Остановить</button>
         </div>
-        <div class="section">
+        <div id="test_ctrl_tab">
+          <a class="waves-effect waves-light btn" id="start_test">Начать</a>
           <a class="waves-effect waves-light btn" id="stop_test">Прервать</a>
         </div>
+
+        <div id="setup_ctrl_tab">
+          <div id="conf-panel">
+            <div class="input-field">
+              <input disabled value="1000" id="conf_min_pwm" type="number" class="validate">
+              <label for="disabled">Мин. импульс ШИМ</label>
+            </div>
+            <div class="input-field">
+              <input disabled value="2000" id="conf_max_pwm" type="number" class="validate">
+              <label for="disabled">Мак. импульс ШИМ</label>
+            </div>
+            <section>
+              <span>Максимальный газ <span id="max_throttle_info">50</span>%</span>
+              <p class="range-field">
+                <input type="range" id="conf_max_throttle" min="500" max="1000" value="500" />
+              </p>
+            </section>
+          </div>
+        </div>
       </div>
+
+
+
+      <!-- TODO: сделать ручку газа -->
+
     </div>
   </div>
   <div class="col s12 xl4">
@@ -74,7 +103,7 @@
         <!-- <i class="material-icons small">chevron_right</i> -->
         <h5>Тяга: <span id="weight_val">0.0</span></h5>
       </div>
-      <div class="valign-wrapper tooltipped" data-position="left" data-tooltip="частота ШИМ">
+      <div class="valign-wrapper tooltipped" data-position="left" data-tooltip="длительность импульса ШИМ">
         <!-- <i class="material-icons small">chevron_right</i> -->
         <h5>Газ: <span id="throttle_val">0.0</span></h5>
       </div>

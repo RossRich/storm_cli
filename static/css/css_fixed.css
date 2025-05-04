@@ -1,0 +1,28 @@
+html, body {
+  margin: 0;
+  height: 100%;
+}
+
+header, main, footer {
+  padding-left: 300px;
+}
+
+@media only screen and (max-width : 992px) {
+  header, main, footer {
+    padding-left: 0;
+  }
+}
+
+.tabs .indicator {
+  background-color: #26a69a!important;
+}
+
+.tabs .tab a:focus, .tabs .tab a:focus.active {
+  background-color: rgba(55, 129, 112, 0.2);
+  outline: none;
+}
+
+.tabs .tab a:hover, .tabs .tab a.active {
+  background-color: transparent;
+  color: #26a69a!important;
+}
