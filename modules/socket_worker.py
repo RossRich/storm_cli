@@ -100,13 +100,13 @@ class SocketView(Namespace, IView):
 
     return True
 
-  def set_measurements(self, data: ViewData):
-    super().set_measurements(data)
-    self.emit("new_measurements", data.data)
+  def set_measurements(self, vd: ViewData):
+    super().set_measurements(vd)
+    self.emit("new_measurements", vd.data)
 
-  def set_configuration(self, conf: ViewData):
-    super().set_configuration(conf)
-    self.emit("new_configuration", conf.data)
+  def set_configuration(self, vd_conf: ViewData):
+    super().set_configuration(vd_conf)
+    self.emit("new_configuration", vd_conf.data)
 
   def set_devices(self, devices: List[str]) -> None:
     super().set_devices(devices)

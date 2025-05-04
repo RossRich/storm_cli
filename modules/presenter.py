@@ -79,13 +79,15 @@ class Presenter(SerialListener, ViewListener):
 
   def on_new_conf(self, cfg: SetupMsg):
     super().on_new_conf(cfg)
-    self._model.cfg = cfg
-    self._view.send_cfg(self._model.cfg)
+    if cfg.to_dict():
+      self._model.cfg = cfg.d
+      self.update_ui_cfg()
 
   def on_new_measurements(self, data: DataMsg) -> None:
     super().on_new_measurements(data)
-    self._model.serial_data = data
-    self.update_ui()
+    if data.to_dict():
+      self._model.measurements = data.d
+      self.update_ui()
 
   def on_new_device(self, dev_list: List[str]):
     super().on_new_device(dev_list)
@@ -108,8 +110,14 @@ class Presenter(SerialListener, ViewListener):
   # presenter section ------>
 
   def update_ui(self) -> None:
-    if self._model.serial_data:
-      self._view.send_measurements(self._model.serial_data)
+    if self._model.measurements:
+      vd = ViewData(ViewDataSrc.MEASUREMENTS, self._model.measurements)
+      self._view.set_measurements(vd)
+
+  def update_ui_cfg(self) -> None:
+    if self._model.cfg:
+      vd = ViewData(ViewDataSrc.CONFIGURATION, self._model.cfg)
+      self._view.set_configuration(vd)
 
   def device_to_view(self) -> None:
     self._view.set_devices(self._model.devices)

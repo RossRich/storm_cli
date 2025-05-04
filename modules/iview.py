@@ -18,11 +18,11 @@ class ViewData():
 
 class IView(ABC):
   @abstractmethod
-  def set_measurements(self, data: ViewData) -> None:
+  def set_measurements(self, vd: ViewData) -> None:
     pass
 
   @abstractmethod
-  def set_configuration(self, conf: ViewData) -> None:
+  def set_configuration(self, vd_conf: ViewData) -> None:
     pass
 
   @abstractmethod
